@@ -36,10 +36,11 @@ def preprocessor(letters, fs):
     strokes = np.array([find_strokes(letter) for letter in letters], dtype=object)
     # Since letters have different numbers of strokes, pad to get consistent feature vector length.
     max_strokes = len(max(strokes, key=len))
-    stroke_matrix = np.empty((len(strokes), max_strokes, 2))
+    features = strokes[0].shape[1]
+    stroke_matrix = np.empty((len(strokes), max_strokes, features))
     for i, stroke in enumerate(strokes):
-        stroke_matrix[i] = np.vstack((stroke, np.ones((max_strokes - len(stroke), 2)) * 1000))
-    return stroke_matrix.reshape((-1, max_strokes * 2))
+        stroke_matrix[i] = np.vstack((stroke, np.ones((max_strokes - len(stroke), features)) * 1000))
+    return stroke_matrix.reshape((-1, max_strokes * features))
 
 
 if __name__ == '__main__':
