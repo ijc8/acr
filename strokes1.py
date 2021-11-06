@@ -3,9 +3,9 @@ from matplotlib import mlab
 import matplotlib.pyplot as plt
 import scipy.signal
 
-from sklearn.neighbors import KNeighborsClassifier
+from sklearn.neighbors import RadiusNeighborsClassifier
 
-import eval
+import evaluate
 
 
 def filter_transients(x, n):
@@ -32,7 +32,29 @@ def find_strokes(x, verbose=False):
     # Matrix of [[stroke time, stroke amplitude]]
     return np.vstack((times, amp)).T
 
-def preprocessor(letters, fs):
+def just_stroke_count(letters, fs):
+    strokes = np.array([find_strokes(letter) for letter in letters], dtype=object)
+    return np.array([len(stroke) for stroke in strokes]).reshape((-1, 1))
+
+def just_stroke_times(letters, fs):
+    strokes = np.array([find_strokes(letter) for letter in letters], dtype=object)
+    # Since letters have different numbers of strokes, pad to get consistent feature vector length.
+    max_strokes = len(max(strokes, key=len))
+    stroke_matrix = np.empty((len(strokes), max_strokes))
+    for i, stroke in enumerate(strokes):
+        stroke_matrix[i] = np.hstack((stroke[:, 0], np.ones(max_strokes - len(stroke)) * 1000))
+    return stroke_matrix
+
+def just_stroke_amps(letters, fs):
+    strokes = np.array([find_strokes(letter) for letter in letters], dtype=object)
+    # Since letters have different numbers of strokes, pad to get consistent feature vector length.
+    max_strokes = len(max(strokes, key=len))
+    stroke_matrix = np.empty((len(strokes), max_strokes))
+    for i, stroke in enumerate(strokes):
+        stroke_matrix[i] = np.hstack((stroke[:, 1], np.ones(max_strokes - len(stroke)) * 1000))
+    return stroke_matrix
+
+def stroke_times_and_amps(letters, fs):
     strokes = np.array([find_strokes(letter) for letter in letters], dtype=object)
     # Since letters have different numbers of strokes, pad to get consistent feature vector length.
     max_strokes = len(max(strokes, key=len))
@@ -42,6 +64,14 @@ def preprocessor(letters, fs):
         stroke_matrix[i] = np.vstack((stroke, np.ones((max_strokes - len(stroke), features)) * 1000))
     return stroke_matrix.reshape((-1, max_strokes * features))
 
-
 if __name__ == '__main__':
-    eval.run(preprocessor, KNeighborsClassifier(1))
+    # RadiusNeighbors seems to do a bit better than KNeighbors in general,
+    # and especially for stroke count (which is 1D).
+    print("== just stroke count ==")
+    evaluate.run(just_stroke_count, RadiusNeighborsClassifier(0))
+    print("== just stroke times ==")
+    evaluate.run(just_stroke_times, RadiusNeighborsClassifier(1))
+    print("== just stroke amps ==")
+    evaluate.run(just_stroke_amps, RadiusNeighborsClassifier(1))
+    print("== stroke times & amps ==")
+    evaluate.run(stroke_times_and_amps, RadiusNeighborsClassifier(1))

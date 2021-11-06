@@ -3,7 +3,7 @@ import scipy.signal
 
 from sklearn.neighbors import KNeighborsClassifier
 
-import eval
+import evaluate
 
 
 processed = None
@@ -26,4 +26,4 @@ def distance(a, b):
 
 
 if __name__ == '__main__':
-    eval.run(preprocessor, KNeighborsClassifier(1, metric=distance, algorithm='brute', n_jobs=8))
+    evaluate.run(preprocessor, KNeighborsClassifier(1, metric=distance, algorithm='brute', n_jobs=8))

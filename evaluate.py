@@ -19,19 +19,6 @@ def load_dataset():
     # Assumes all letters have same sample rate.
     return letters, fs
 
-
-def eval_accuracy(extractor, classifier, test, train):
-    testY = np.indices(test.shape[:3])[1].reshape(-1)
-    trainY = np.indices(train.shape[:3])[1].reshape(-1)
-    test = test.reshape(-1)
-    train = train.reshape(-1)
-    features = extractor(np.hstack((test, train)))
-    testX, trainX = features[:len(test)], features[len(test):]
-    classifier.fit(trainX, trainY)
-    predictY = classifier.predict(testX)
-    return np.mean(testY == predictY)
-
-
 def run(preprocessor, classifier, seed=None):
     # TODO: Add option to plot confusion matrices, in addition to printing accuracy.
     letters, fs = load_dataset()
