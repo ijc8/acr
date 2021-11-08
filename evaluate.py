@@ -21,7 +21,6 @@ def load_dataset():
     return letters, fs
 
 def run(preprocessor, classifier, seed=None):
-    # TODO: Add option to plot confusion matrices, in addition to printing accuracy.
     letters, fs = load_dataset()
 
     # Avoid re-doing preprocessing for each of these tasks.

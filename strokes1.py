@@ -11,6 +11,9 @@ import evaluate
 def filter_transients(x, n):
     return np.median(x[:len(x)//n*n].reshape((-1, n)), axis=1)
 
+# NOTE: This has largely been superseded by `spans.py`.
+# You would probably be better served by getting strokes by taking
+# every other span from `extract_spans()`.
 def find_strokes(x, verbose=0, db=-9, dist=11):
     X = mlab.specgram(np.diff(x), NFFT=512, noverlap=256)[0]
     summed = X[:120].sum(axis=0)
@@ -140,7 +143,7 @@ index_train[idx]
 find_strokes(letters[0, 14, 5], verbose=1)
 X_train[idx].astype(int)
 
-find_strokes(letters[0, 4, 14], verbose=2, dist=11, db=-9)
+find_strokes(letters[0, 0, 0], verbose=1)
 
 idx = np.where(y_train == evaluate.alphabet.index('A'))[0]
 index_train[idx]
