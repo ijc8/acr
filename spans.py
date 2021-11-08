@@ -20,14 +20,14 @@ indices
 mask = np.diff(indices) > 2
 np.concatenate(([True], mask)) & np.concatenate((mask, [True]))
 
-def extract_spans(x, verbose=0, db=-5, dist=11, cutoff=50):
+def extract_spans(x, verbose=0, db=-7, smooth=11, cutoff=25):
     X = mlab.specgram(np.diff(x), NFFT=512, noverlap=256)[0]
-    summed = signal.medfilt(X[:cutoff].sum(axis=0))
+    X -= np.median(X, axis=1)[:, None]
+    summed = signal.medfilt(X[:cutoff].sum(axis=0), smooth)
     summed /= np.max(summed)
 
     threshold = 10**(db/10)
-    smoothed = np.convolve(summed, np.ones(dist) / dist, mode='same')
-    active = (summed > threshold) | (smoothed > threshold)
+    active = summed > threshold
     indices = np.where(np.diff(np.concatenate(([False], active, [False]))))[0]
     if verbose:
         print(indices)
@@ -41,7 +41,7 @@ def extract_spans(x, verbose=0, db=-5, dist=11, cutoff=50):
             plt.plot(np.log10(summed))
             plt.show()
         plt.plot(summed)
-        plt.plot(active)
+        plt.axhline(threshold)
         print(indices)
         for start, duration, amp in spans:
             color = 'red' if amp >= threshold else 'blue'
@@ -93,6 +93,11 @@ def alt_dist_metric(a, b, verbose=0):
             j += 1
     return score
 
+def span_special(letters, fs):
+    global spans
+    spans = np.array([extract_spans(letter) for letter in letters.reshape(-1)], dtype=object)
+    return np.arange(len(spans)).reshape((-1, 1))
+
 if __name__ == '__main__':
     # RadiusNeighbors seems to do a bit better than KNeighbors in general,
     # and especially for span count (which is 1D).
@@ -110,6 +115,8 @@ if __name__ == '__main__':
     evaluate.run(span_features([0, 1, 2]), KNeighborsClassifier(9))
     print("== and finally, with a fancier classifier ==")
     evaluate.run(span_features([0, 1, 2]), RandomForestClassifier())
+    print("== custom distance metric ==")
+    evaluate.run(span_special, KNeighborsClassifier(1, algorithm="brute", metric=alt_dist_metric))
 
 
 # Misc. experimentation, investigation, tweaking
@@ -128,7 +135,7 @@ subjects = np.indices(letters.shape)[0].reshape(-1)
 indices = np.indices(letters.shape).reshape((letters.ndim, -1)).T
 
 extract_spans(letters[0,0,0], verbose=1)
-extract_spans(letters[0,0,1], verbose=1)
+extract_spans(letters[0,0,1], verbose=1, smooth=11, db=-7)
 
 alt_dist_metric([0], [1], verbose=True)
 
@@ -146,13 +153,29 @@ X_train, X_test, y_train, y_test, index_train, index_test = train_test_split(
 
 classifier = KNeighborsClassifier(9)
 
-index_train[y_train == evaluate.alphabet.index('J')]
-index_test[y_test == evaluate.alphabet.index('J')]
+index_train[y_train == evaluate.alphabet.index('M')]
+index_test[y_test == evaluate.alphabet.index('M')]
+indices[240]
+indices[247]
+extract_spans(letters[0, 12, 0], verbose=1, cutoff=25, db=-8)
+extract_spans(letters[0, 12, 10], verbose=1, cutoff=25, db=-5)
+alt_dist_metric([240], [250], verbose=True)
+
 indices[182]
 indices[188]
-extract_spans(letters[0, 9, 8], verbose=1)
-extract_spans(letters[0, 9, 2], verbose=1)
+extract_spans(letters[0, 9, 2], verbose=1, cutoff=25, db=-5)
+extract_spans(letters[0, 9, 8], verbose=1, cutoff=25, db=-5)
 alt_dist_metric([182], [188], verbose=True)
+
+
+index_train[y_train == evaluate.alphabet.index('N')]
+index_test[y_test == evaluate.alphabet.index('N')]
+indices[260]
+indices[262]
+extract_spans(letters[0, 13, 0], verbose=1, cutoff=25, db=-8)
+extract_spans(letters[0, 13, 2], verbose=1, cutoff=25, db=-8)
+alt_dist_metric([260], [262], verbose=True)
+
 
 
 classifier.fit(X_train, y_train)
@@ -197,12 +220,14 @@ idx = np.where(y_train == evaluate.alphabet.index('A'))[0]
 index_train[idx]
 
 f, (a, b, c) = plt.subplots(3, figsize=(20, 20), sharex=True)
-X = mlab.specgram(np.diff(letters[0, 0, 1]), NFFT=512, noverlap=256)[0]
+X = mlab.specgram(np.diff(letters[0, 12, 10]), NFFT=512, noverlap=256)[0]
+X -= np.median(X, axis=1)[:, None]
 a.imshow(np.log(X), origin='lower', aspect='auto')
-summed = X[:50].sum(axis=0)
-summed = signal.medfilt(summed)
+summed = X[:25].sum(axis=0)
+summed = signal.medfilt(summed, 7)
 summed /= np.max(summed)
 b.plot(summed)
+b.axhline(10**(-7/10))
 c.plot(np.log(summed))
 f.show()
 
