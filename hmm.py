@@ -14,8 +14,11 @@ class HMMLetterClassifier:
         # TODO: This currently uses the durations reported by `extract_spans`,
         # which are normalized to the letter length. This will likely cause problems
         # when we try to use this on whole words.
+        # NOTE: This heavily favors fewer-letter explanations, because the within-letter
+        # transition probabilties are 1, while the between-letter probabilities are
+        # necessarily < 1 (uniform 1/n_sequences). This is a problem.
         n_sequences = len(X)
-        n_states = sum(len(span) for span in X)
+        n_states = sum(len(span) for span in X) + 1
         n_features = X[0].shape[1]
         startprob = np.zeros(n_states)
         transmat = np.zeros((n_states, n_states))
@@ -29,6 +32,12 @@ class HMMLetterClassifier:
         start_states = np.empty(n_sequences, dtype=int)
         end_states = np.empty(n_sequences, dtype=int)
         state = 0
+        # State 0 represents the gap between letters.
+        # At the end, we'll connect it to all the start nodes.
+        states[0] = np.nan
+        startprob[state] = 0
+        means[state] = [0.5, 0]
+        state += 1
         for i, (spans, label) in enumerate(zip(X, y)):
             # Create a state sequence to represent this particular version of a letter.
             start_states[i] = state
@@ -42,11 +51,12 @@ class HMMLetterClassifier:
                 # Link nodes in the state sequence together with 100% probability.
                 transmat[state-1, state] = 1
                 state += 1
-            # After this loop, we'll link the last node in the sequence with all the start nodes.
+            # Link the last node in the sequence to the gap state.
+            transmat[state-1, 0] = 1
             end_states[i] = state - 1
 
-        for end_state in end_states:
-            transmat[end_state, start_states] = 1 / n_sequences
+        # Link the gap state to all the start nodes.
+        transmat[0, start_states] = 1 / n_sequences
 
         model = hmm.GaussianHMM(n_components=n_states, covariance_type="diag")
         model.startprob_ = startprob
@@ -62,6 +72,7 @@ class HMMLetterClassifier:
         for i, sample in enumerate(X):
             prob, seq = self.model.decode(sample)
             states = self.states[seq]
+            print(states)
             start_states = states[~np.signbit(states)].astype(int)
             if len(start_states) > 1:
                 print(f"Warning: matched multi-letter sequence: {start_states}")
@@ -70,6 +81,10 @@ class HMMLetterClassifier:
 
 from sklearn.model_selection import train_test_split
 
+
+
+# 6
+len(extract_spans(letters[0, 17, 20], verbose=1))
 
 letters, fs = load_dataset()
 # NOTE: We skip the first feature (start time), because the HMM considers each stroke independently.
@@ -88,6 +103,26 @@ X_train, X_test, y_train, y_test, index_train, index_test = train_test_split(
 
 cls = HMMLetterClassifier()
 cls.fit(X_train, y_train)
+cls.predict([X[indices.tolist().index([0, 0, 0])]])
+cls.predict([X[indices.tolist().index([0, 1, 0])]])
+
+concat = np.concatenate((letters[0,4,0], letters[0, 2, 0]))
+
+concat = np.concatenate((letters[0,4,0], letters[0, 4, 1]))
+concat_spans = extract_spans(concat, verbose=1)[:, 1:]
+concat_spans[:, 0] *= 2
+concat_spans[:, 0].sum()
+
+len(X[(y == 19) & (subjects == 0)])
+list(map(len, X[(y == 4) & (subjects == 0)]))
+len(concat_spans)
+
+evaluate.alphabet[4]
+evaluate.alphabet[22]
+extract_spans(letters[0, 24, 3], verbose=1)
+
+cls.predict([concat_spans])
+
 y_pred = cls.predict(X_test)
 print(f"{round((y_test == y_pred).mean() * 100, 2)}%")
 
