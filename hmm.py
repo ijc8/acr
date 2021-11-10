@@ -88,14 +88,80 @@ class HMMLetterClassifier:
             states = self.states[seq]
             print(states)
             start_states = states[~np.signbit(states)].astype(int)
-            if len(start_states) > 2:
+            if len(start_states) > 3:
                 print(f"Warning: matched multi-letter sequence: {start_states}")
             y[i] = start_states[0]
         return y
 
 from sklearn.model_selection import train_test_split
 
+import scipy
+import scipy.stats
 
+def emission(template, spans):
+    prob = 1
+    for expected, observed in zip(template, spans):
+        prob *= np.prod(scipy.stats.norm.pdf(observed, loc=expected))
+    return prob
+
+def custom_viterbi(templates, spans):
+    # Customized implementation of Viterbi algorithm.
+    # Lacks transition probabilities (and therefore does not penalize sequences with more characters.)
+    # Efficiently handles fixed subsequences (where internal transition probabilities are all 1).
+    # TODO: Allow gap between letters. (Maybe just an extra one-span template?)
+    # This could be further optimized by combining all sequences of the same length,
+    # so that there would be a very small (max(len, templates)) number of states in the trellis.
+    n_states = len(templates)
+    trellis = np.ones((len(spans), n_states)) * -np.inf
+    pointers = np.zeros((len(spans), n_states, 2), dtype=int)
+
+    for s, template in enumerate(templates):
+        if len(template) > len(spans):
+            continue
+        # Skip ahead to the end of the template.
+        # (Intermediate probabilities will be 0, reflecting that you can't switch in the middle of a letter.)
+        trellis[len(template) - 1, s] = np.log(emission(template, spans[:len(template)]))
+
+    for o in range(1, len(spans)):
+        for s in range(n_states):
+            template = templates[s]
+            if o + len(template) > len(spans):
+                # Not enough observations left for this template.
+                continue
+            emission_log_prob = np.log(emission(template, spans[o:o + len(template)]))
+            candidates = np.zeros(n_states)
+            for k in range(n_states):
+                prev_log_prob = trellis[o-1, k]
+                candidates[k] = prev_log_prob + emission_log_prob
+            k = np.argmax(candidates)
+            trellis[o + len(template) - 1, s] = candidates[k]
+            pointers[o + len(template) - 1, s] = [o-1, k]
+
+    o = len(spans) - 1
+    best_prob = np.max(trellis[o])
+    k = np.argmax(trellis[o])
+    start = o - len(templates[k]) + 1
+    best_path = [(start, o + 1, k)]
+    while start > 0:
+        o, k = pointers[o, k]
+        start = o - len(templates[k]) + 1
+        best_path.insert(0, (start, o + 1, k))
+
+    return best_path, best_prob
+
+
+templates = X_train
+y_train[367]
+y_test[3]
+spans = X_test[0]
+custom_viterbi(templates, np.vstack((X_test[0], X_test[3])))
+y_pred = np.zeros(len(y_test))
+for i, spans in enumerate(X_test):
+    path = custom_viterbi(templates, spans)
+    print(path)
+    y_pred[i] = y_train[path[-1][-1]]
+print((y_pred == y_test).mean())
+np.where(y_pred == y_test)
 
 # 6
 len(extract_spans(letters[0, 17, 20], verbose=1))
@@ -125,8 +191,12 @@ cls.predict([X[indices.tolist().index([0, 1, 0])]])
 
 concat = np.concatenate((letters[0,4,0], letters[0, 2, 0]))
 
-concat = np.concatenate((letters[0,4,0], letters[0, 4, 1]))
+concat = np.concatenate((letters[0,4,0], letters[0, 1, 1]))
 concat_spans = extract_spans(concat, verbose=1)[:, 1:]
+
+concat_spans = np.vstack((extract_spans(letters[0,4,0])[:, 1:], [[0.5, 0]], extract_spans(letters[0,4,0])[:, 1:]))
+
+cls.predict([concat_spans])
 concat_spans[:, 0] *= 2
 concat_spans[:, 0].sum()
 
