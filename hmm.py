@@ -17,8 +17,14 @@ class HMMLetterClassifier:
         # NOTE: This heavily favors fewer-letter explanations, because the within-letter
         # transition probabilties are 1, while the between-letter probabilities are
         # necessarily < 1 (uniform 1/n_sequences). This is a problem.
+        # I believe this could be resolved by modifying the probabilities of the start states
+        # to be inversely exponentially proportional with the length of the sequence,
+        # so that the long letters receive the same probability-penalty as the short ones over time.
+        # This involves solving a polynomial of degree <max sequence length + 1>,
+        # which could be done with `np.roots`.
+        # However, it may be simpler (and useful for other reasons) to just customize Viterbi.
         n_sequences = len(X)
-        n_states = sum(len(span) for span in X) + 1
+        n_states = sum(len(span) for span in X) + 2
         n_features = X[0].shape[1]
         startprob = np.zeros(n_states)
         transmat = np.zeros((n_states, n_states))
@@ -27,14 +33,14 @@ class HMMLetterClassifier:
 
         # >= 0 indicates start of a sequence.
         # < 0 indicates continuing a sequence.
-        states = np.ones(n_states) * -1
+        states = np.zeros(n_states)
 
         start_states = np.empty(n_sequences, dtype=int)
         end_states = np.empty(n_sequences, dtype=int)
         state = 0
         # State 0 represents the gap between letters.
         # At the end, we'll connect it to all the start nodes.
-        states[0] = np.nan
+        states[state] = np.nan
         startprob[state] = 0
         means[state] = [0.5, 0]
         state += 1
@@ -56,7 +62,13 @@ class HMMLetterClassifier:
             end_states[i] = state - 1
 
         # Link the gap state to all the start nodes.
-        transmat[0, start_states] = 1 / n_sequences
+        transmat[0, start_states] = 1 / (n_sequences + 1)
+        # Link the gap state to the end node.
+        transmat[0, state] = 1 / (n_sequences + 1)
+        # Construct the end node; make it unlikely that the end node is mixed up with any other node.
+        states[state] = np.nan
+        means[state] = 1e6
+        transmat[state, state] = 1
 
         model = hmm.GaussianHMM(n_components=n_states, covariance_type="diag")
         model.startprob_ = startprob
@@ -70,11 +82,13 @@ class HMMLetterClassifier:
     def predict(self, X):
         y = np.empty(len(X), dtype=int)
         for i, sample in enumerate(X):
+            # Add gap state + end state to the end.
+            sample = np.vstack((sample, [[0, 0], [1e6, 1e6]]))
             prob, seq = self.model.decode(sample)
             states = self.states[seq]
             print(states)
             start_states = states[~np.signbit(states)].astype(int)
-            if len(start_states) > 1:
+            if len(start_states) > 2:
                 print(f"Warning: matched multi-letter sequence: {start_states}")
             y[i] = start_states[0]
         return y
@@ -86,7 +100,7 @@ from sklearn.model_selection import train_test_split
 # 6
 len(extract_spans(letters[0, 17, 20], verbose=1))
 
-letters, fs = load_dataset()
+letters, fs = evaluate.load_dataset()
 # NOTE: We skip the first feature (start time), because the HMM considers each stroke independently.
 X = np.array([extract_spans(letter)[:, 1:] for letter in letters.reshape(-1)], dtype=object)
 y = np.indices(letters.shape)[1].reshape(-1)
@@ -103,7 +117,10 @@ X_train, X_test, y_train, y_test, index_train, index_test = train_test_split(
 
 cls = HMMLetterClassifier()
 cls.fit(X_train, y_train)
+X[indices.tolist().index([0, 0, 0])]
+# cls.predict([np.vstack((X[indices.tolist().index([0, 0, 0])], [[0, 0], [1e6, 1e6]]))])
 cls.predict([X[indices.tolist().index([0, 0, 0])]])
+X[0]
 cls.predict([X[indices.tolist().index([0, 1, 0])]])
 
 concat = np.concatenate((letters[0,4,0], letters[0, 2, 0]))
