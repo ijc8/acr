@@ -9,7 +9,7 @@ from sklearn.ensemble import RandomForestClassifier
 import evaluate
 
 
-def extract_spans(x, verbose=0, db=-11, smooth=19, cutoff=22):
+def extract_spans(x, verbose=0, db=-11, smooth=19, cutoff=22, normalize_time=True):
     X = mlab.specgram(np.diff(x), NFFT=512, noverlap=256)[0]
     X -= np.median(X, axis=1)[:, None]
     # Filter spectrum when finding spans.
@@ -47,8 +47,9 @@ def extract_spans(x, verbose=0, db=-11, smooth=19, cutoff=22):
         plt.show() 
 
     spans[:, 0] -= spans[0, 0]
-    total_duration = spans[-1, 0] + spans[-1, 1]
-    spans[:, 0:2] /= total_duration
+    if normalize_time:
+        total_duration = spans[-1, 0] + spans[-1, 1]
+        spans[:, 0:2] /= total_duration
 
     # Matrix of [[time, duration, amplitude]]
     return spans

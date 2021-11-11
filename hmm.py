@@ -96,13 +96,14 @@ class HMMLetterClassifier:
 from sklearn.model_selection import train_test_split
 
 import scipy
-import scipy.stats
+from scipy import signal, stats
 
 def emission(template, spans):
-    prob = 1
+    log_prob = 0
     for expected, observed in zip(template, spans):
-        prob *= np.prod(scipy.stats.norm.pdf(observed, loc=expected))
-    return prob
+        p = stats.norm.pdf(observed, loc=expected, scale=[50, 1])
+        log_prob += np.sum(np.log(p))
+    return log_prob
 
 def custom_viterbi(templates, spans):
     # Customized implementation of Viterbi algorithm.
@@ -120,7 +121,7 @@ def custom_viterbi(templates, spans):
             continue
         # Skip ahead to the end of the template.
         # (Intermediate probabilities will be 0, reflecting that you can't switch in the middle of a letter.)
-        trellis[len(template) - 1, s] = np.log(emission(template, spans[:len(template)]))
+        trellis[len(template) - 1, s] = emission(template, spans[:len(template)])
 
     for o in range(1, len(spans)):
         for s in range(n_states):
@@ -128,7 +129,7 @@ def custom_viterbi(templates, spans):
             if o + len(template) > len(spans):
                 # Not enough observations left for this template.
                 continue
-            emission_log_prob = np.log(emission(template, spans[o:o + len(template)]))
+            emission_log_prob = emission(template, spans[o:o + len(template)])
             candidates = np.zeros(n_states)
             for k in range(n_states):
                 prev_log_prob = trellis[o-1, k]
@@ -149,11 +150,32 @@ def custom_viterbi(templates, spans):
 
     return best_path, best_prob
 
+extra = np.array([None])
+extra[0] = np.array([[30, 0]])
+
+templates = np.concatenate((X_train, extra))
+correspondence = ''.join(evaluate.alphabet[c] for c in y_train) + '|'
+''.join(correspondence[i] for s, e, i in custom_viterbi(templates, the_spans * [1, 1])[0])
+
+''.join(correspondence[i] for s, e, i in custom_viterbi(templates, quick_spans)[0])
+quick_spans
+pred_spans
+pred_spans = np.vstack([templates[i] for _, _, i in custom_viterbi(templates, quick_spans)[0]])
+
+evaluate.alphabet[7]
+y_train[127]
+y_train[192]
+y_train[380]
+
+evaluate.alphabet[2]
 
 templates = X_train
-y_train[367]
-y_test[3]
+y_train[263]
+y_test[0]
 spans = X_test[0]
+X_test[0]
+custom_viterbi(templates, spans)
+
 custom_viterbi(templates, np.vstack((X_test[0], X_test[3])))
 y_pred = np.zeros(len(y_test))
 for i, spans in enumerate(X_test):
@@ -163,12 +185,37 @@ for i, spans in enumerate(X_test):
 print((y_pred == y_test).mean())
 np.where(y_pred == y_test)
 
+
+fs, the = scipy.io.wavfile.read("words/the.wav")
+import matplotlib.pyplot as plt
+plt.specgram(the, NFFT=512, noverlap=256)
+the_spans = extract_spans(the, verbose=1, db=-13, normalize_time=False)[:, 1:]
+len(the_spans)
+the_spans * [3, 1]
+cls.predict([the_spans * [1, 1]])
+evaluate.alphabet[15]
+
+fs, quick = scipy.io.wavfile.read("words/quick.wav")
+import matplotlib.pyplot as plt
+plt.specgram(quick, NFFT=512, noverlap=256)
+quick_spans = extract_spans(quick, verbose=1, normalize_time=False)[:, 1:]
+quick_spans[:3]
+cls.predict([quick_spans[:3]])
+dir(cls.model)
+X_train[y_train == 16][1]
+index_train[y_train == 25][1]
+X_train[y_train == 25][1]
+evaluate.alphabet.index('Q')
+evaluate.alphabet[25]
+
+extract_spans(letters[0,25,5], verbose=1)
+
 # 6
 len(extract_spans(letters[0, 17, 20], verbose=1))
 
 letters, fs = evaluate.load_dataset()
 # NOTE: We skip the first feature (start time), because the HMM considers each stroke independently.
-X = np.array([extract_spans(letter)[:, 1:] for letter in letters.reshape(-1)], dtype=object)
+X = np.array([extract_spans(letter, normalize_time=False)[:, 1:] for letter in letters.reshape(-1)], dtype=object)
 y = np.indices(letters.shape)[1].reshape(-1)
 
 subjects = np.indices(letters.shape)[0].reshape(-1)
