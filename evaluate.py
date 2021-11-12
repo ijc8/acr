@@ -20,8 +20,12 @@ def load_dataset():
     # Assumes all letters have same sample rate.
     return letters, fs
 
-def run(preprocessor, classifier, seed=None):
+def run(preprocessor, classifier, subset=None, seed=None):
     letters, fs = load_dataset()
+    labels = alphabet
+    if subset is not None:
+        letters = letters[:, subset, :]
+        labels = np.array(list(alphabet))[subset]
 
     # Avoid re-doing preprocessing for each of these tasks.
     X = preprocessor(letters.reshape(-1), fs)
@@ -38,7 +42,7 @@ def run(preprocessor, classifier, seed=None):
         classifier.fit(X_train, y_train)
         y_pred = classifier.predict(X_test)
         print(f"Single-subject accuracy ({subject}): {round((y_pred == y_test).mean() * 100, 2)}%")
-        ConfusionMatrixDisplay.from_predictions(y_test, y_pred, display_labels=alphabet, include_values=False)
+        ConfusionMatrixDisplay.from_predictions(y_test, y_pred, display_labels=labels, include_values=False)
 
     # All-subjects accuracy (semi-personalized mode)
     X_train, X_test, y_train, y_test, subjects_train, subjects_test = train_test_split(
@@ -48,12 +52,12 @@ def run(preprocessor, classifier, seed=None):
     classifier.fit(X_train, y_train)
     y_pred = classifier.predict(X_test)
     print(f"All-subject accuracy: {round((y_pred == y_test).mean() * 100, 2)}%")
-    ConfusionMatrixDisplay.from_predictions(y_test, y_pred, display_labels=alphabet, include_values=False)
+    ConfusionMatrixDisplay.from_predictions(y_test, y_pred, display_labels=labels, include_values=False)
     # Break down accuracy by subject
     for subject in range(len(letters)):
         mask = subjects_test == subject
         print(f"- Subject {subject}: {round((y_pred[mask] == y_test[mask]).mean() * 100, 2)}%")
-        # ConfusionMatrixDisplay.from_predictions(y_test[mask], y_pred[mask], , display_labels=alphabet, include_values=False)
+        # ConfusionMatrixDisplay.from_predictions(y_test[mask], y_pred[mask], display_labels=labels, include_values=False)
 
     # Left-out-subjects accuracy (new user mode)
     logo = LeaveOneGroupOut()
@@ -63,4 +67,4 @@ def run(preprocessor, classifier, seed=None):
         classifier.fit(X_train, y_train)
         y_pred = classifier.predict(X_test)
         print(f"Left-out-subject accuracy ({subject}): {round((y_pred == y_test).mean() * 100, 2)}%")
-        ConfusionMatrixDisplay.from_predictions(y_test, y_pred, display_labels=alphabet, include_values=False)
+        ConfusionMatrixDisplay.from_predictions(y_test, y_pred, display_labels=labels, include_values=False)

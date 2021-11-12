@@ -5,6 +5,8 @@ from dtw import dtw
 
 
 letters, fs = load_dataset()
+letters = letters[:, :4, :]
+
 a = letters[0, 0, 0].astype(float) / np.iinfo(np.int32).max
 
 import matplotlib.pyplot as plt
@@ -18,15 +20,17 @@ def preprocessor(letters, fs):
     mfccs = np.empty(letters.shape, dtype=object)
     for i, letter in enumerate(letters):
         letter = letter.astype(float) / np.iinfo(np.int32).max
-        mfccs[i] = librosa.feature.mfcc(letter).T
+        mfccs[i] = librosa.feature.mfcc(np.diff(letter)).T
     return np.arange(len(mfccs)).reshape(-1, 1)
 
 def dtw_dist(a, b):
     a = mfccs[int(a[0])]
     b = mfccs[int(b[0])]
-    return dtw(a, b, dist_method="cosine").normalizedDistance
+    return dtw(a, b, dist_method="euclidean").normalizedDistance
 
 from sklearn.neighbors import KNeighborsClassifier
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import make_pipeline
 
 cls = KNeighborsClassifier(1, metric=dtw_dist, algorithm='brute', n_jobs=8)
 
@@ -47,9 +51,13 @@ X_train, X_test, y_train, y_test, index_train, index_test = train_test_split(
 cls.fit(X_train, y_train)
 y_pred = cls.predict(X_test)
 (y_pred == y_test).mean()
+ConfusionMatrixDisplay.from_predictions(
+    y_test, y_pred, display_labels=evaluate.alphabet[:4],
+    include_values=False
+)
 
 import evaluate
-evaluate.run(preprocessor, cls)
+evaluate.run(preprocessor, cls, subset=np.arange(4))
 
 # Single-subject accuracy (0): 59.23%
 # Single-subject accuracy (1): 63.08%
@@ -64,3 +72,18 @@ evaluate.run(preprocessor, cls)
 # Left-out-subject accuracy (1): 7.12%
 # Left-out-subject accuracy (2): 4.81%
 # Left-out-subject accuracy (3): 5.19%
+
+# From a run with just four classes (A B C D):
+# Single-subject accuracy (0): 85.0%
+# Single-subject accuracy (1): 100.0%
+# Single-subject accuracy (2): 100.0%
+# Single-subject accuracy (3): 100.0%
+# All-subject accuracy: 90.0%
+# - Subject 0: 100.0%
+# - Subject 1: 84.21%
+# - Subject 2: 85.71%
+# - Subject 3: 90.91%
+# Left-out-subject accuracy (0): 40.0%
+# Left-out-subject accuracy (1): 66.25%
+# Left-out-subject accuracy (2): 53.75%
+# Left-out-subject accuracy (3): 48.75%
