@@ -26,4 +26,20 @@ def distance(a, b):
 
 
 if __name__ == '__main__':
-    evaluate.run(preprocessor, KNeighborsClassifier(1, metric=distance, algorithm='brute', n_jobs=8))
+    evaluate.run(preprocessor, KNeighborsClassifier(1, metric=distance, algorithm='brute'), subset=np.arange(4))
+
+
+# With four classes:
+# Single-subject accuracy (0): 100.0%
+# Single-subject accuracy (1): 100.0%
+# Single-subject accuracy (2): 100.0%
+# Single-subject accuracy (3): 100.0%
+# All-subject accuracy: 100.0%
+# - Subject 0: 100.0%
+# - Subject 1: 100.0%
+# - Subject 2: 100.0%
+# - Subject 3: 100.0%
+# Left-out-subject accuracy (0): 53.75%
+# Left-out-subject accuracy (1): 35.0%
+# Left-out-subject accuracy (2): 47.5%
+# Left-out-subject accuracy (3): 45.0%

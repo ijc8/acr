@@ -26,11 +26,12 @@ def dtw_dist(a, b):
     return dtw(a, b, dist_method="euclidean").normalizedDistance
 
 from sklearn.neighbors import KNeighborsClassifier
-cls = KNeighborsClassifier(1, metric=dtw_dist, algorithm='brute', n_jobs=8)
+cls = KNeighborsClassifier(1, metric=dtw_dist)
 
 import evaluate
-evaluate.run(preprocessor, cls, subset=np.arange(4))
+evaluate.run(preprocessor, cls)
 
+# With four classes (ABCD):
 # Single-subject accuracy (0): 95.0%
 # Single-subject accuracy (1): 90.0%
 # Single-subject accuracy (2): 100.0%
@@ -44,3 +45,33 @@ evaluate.run(preprocessor, cls, subset=np.arange(4))
 # Left-out-subject accuracy (1): 66.25%
 # Left-out-subject accuracy (2): 78.75%
 # Left-out-subject accuracy (3): 70.0%
+
+# With eight classes (ABCDEFGH):
+# Single-subject accuracy (0): 90.0%
+# Single-subject accuracy (1): 82.5%
+# Single-subject accuracy (2): 90.0%
+# Single-subject accuracy (3): 90.0%
+# All-subject accuracy: 88.75%
+# - Subject 0: 93.18%
+# - Subject 1: 87.18%
+# - Subject 2: 90.48%
+# - Subject 3: 82.86%
+# Left-out-subject accuracy (0): 50.0%
+# Left-out-subject accuracy (1): 44.38%
+# Left-out-subject accuracy (2): 40.0%
+# Left-out-subject accuracy (3): 39.38%
+
+# With the whole shebang (A-Z):
+# Single-subject accuracy (0): 75.38%
+# Single-subject accuracy (1): 68.46%
+# Single-subject accuracy (2): 74.62%
+# Single-subject accuracy (3): 66.15%
+# All-subject accuracy: 64.42%
+# - Subject 0: 72.46%
+# - Subject 1: 64.62%
+# - Subject 2: 66.41%
+# - Subject 3: 52.89%
+# Left-out-subject accuracy (0): 19.42%
+# Left-out-subject accuracy (1): 19.42%
+# Left-out-subject accuracy (2): 14.81%
+# Left-out-subject accuracy (3): 12.69%
