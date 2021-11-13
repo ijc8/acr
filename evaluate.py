@@ -16,7 +16,7 @@ def load_dataset():
         subject = i + 1
         letter = alphabet[j]
         fs, x = scipy.io.wavfile.read(f"letters/{subject}/{letter}/PZ/{k}.wav")
-        letters[i, j, k] = x
+        letters[i, j, k] = x.astype(float) / np.iinfo(np.int32).max
     # Assumes all letters have same sample rate.
     return letters, fs
 

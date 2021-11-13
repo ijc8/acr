@@ -12,12 +12,14 @@ def block_audio(x, blockSize, hopSize):
         xb[n][np.arange(0,blockSize)] = x[np.arange(i_start, i_stop + 1)]
     return xb
 
+def get_power(x):
+    return np.log10((block_audio(np.diff(x), 2048, 512)**2).sum(axis=1).clip(1e-10, 1)) * 10
+
 def preprocessor(letters, fs):
     global power
     power = np.empty(letters.shape, dtype=object)
     for i, letter in enumerate(letters):
-        letter = letter.astype(float) / np.iinfo(np.int32).max
-        power[i] = np.log((block_audio(np.diff(letter), 2048, 512)**2).sum(axis=1))
+        power[i] = get_power(letter)
     return np.arange(len(power)).reshape(-1, 1)
 
 def dtw_dist(a, b):
@@ -29,7 +31,7 @@ from sklearn.neighbors import KNeighborsClassifier
 cls = KNeighborsClassifier(1, metric=dtw_dist)
 
 import evaluate
-evaluate.run(preprocessor, cls)
+evaluate.run(preprocessor, cls, np.arange(4))
 
 # With four classes (ABCD):
 # Single-subject accuracy (0): 95.0%
@@ -75,3 +77,87 @@ evaluate.run(preprocessor, cls)
 # Left-out-subject accuracy (1): 19.42%
 # Left-out-subject accuracy (2): 14.81%
 # Left-out-subject accuracy (3): 12.69%
+
+
+def parse_word(X, y, word):
+    word_power = get_power(word)
+    position = 0
+    seq = []
+    while position < len(word_power):
+        print(f"position is {position} / {len(word_power)}")
+        scores = np.empty(len(X))
+        indices = np.empty(len(X), dtype=int)
+        for i in range(len(X)):
+            template = power[X[i, 0]]
+            # print(template.shape, word_power[position:].shape)
+            alignment = dtw(template, word_power[position:], dist_method="euclidean", open_end=True)
+            scores[i] = alignment.normalizedDistance
+            indices[i] = alignment.jmin
+        best = scores.argmin()
+        length = indices[best] + 1
+        print("best is", best, "label is", y[best], "length is", length)
+        seq.append((y[best], position, position + length))
+        position += length
+    return seq
+
+word = np.concatenate((letters[0,0,0], letters[0,1,0]))
+
+letters, fs = evaluate.load_dataset()
+letters = letters[:1, :4, :]
+X = preprocessor(letters.reshape(-1), fs)
+y = np.indices(letters.shape)[1].reshape(-1)
+subjects = np.indices(letters.shape)[0].reshape(-1)
+indices = np.indices(letters.shape).reshape((letters.ndim, -1)).T
+
+mask = np.ones(len(X), dtype=bool)
+from sklearn.model_selection import train_test_split
+X_train, X_test, y_train, y_test, indices_train, indices_test = train_test_split(
+    X[mask], y[mask], indices[mask], test_size=0.25, stratify=y[mask],
+)
+
+# Add a spacing template to match silence.
+extra = np.empty((1,), dtype=object)
+extra[0] = np.array([-34])
+power[-1][0] = -100
+power = np.concatenate((power, extra))
+X_train = np.concatenate((X_train, [[-1]]))
+y_train = np.concatenate((y_train, [-1]))
+
+def tape(pieces, env_size=512):
+    # Concatenate audio signals safely (without discontinuities at the boundaries).
+    enveloped = []
+    envelope = np.linspace(0, 1, env_size, endpoint=False)
+    for piece in pieces:
+        piece = piece.copy()
+        piece[:env_size] *= envelope
+        piece[-env_size:] *= envelope[::-1]
+        enveloped.append(piece)
+    return np.concatenate(enveloped)
+
+indices[[X_test[y_test == 0][0, 0]]]
+a_test = letters.reshape(-1)[X_test[y_test == 0][0, 0]]
+b_test = letters.reshape(-1)[X_test[y_test == 1][0, 0]]
+plt.specgram(a_test);
+plt.plot(get_power(a_test));
+plt.plot(get_power(b_test));
+word = tape((a_test, np.zeros(44100), b_test))
+plt.plot(get_power(word)[138:354]);
+
+X_train[25]
+plt.plot(power[77])
+alignment = dtw(power[-1], get_power(word)[138:], open_end=True, keep_internals=True)
+alignment.plot('threeway')
+alignment.normalizedDistance
+
+parse_word(X_train, y_train, word)
+
+parse_word(X_train, y_train, a_test)
+
+scores.argmin()
+y[0]
+positions[0]
+len(power[0])
+template = power[0]
+alignment = dtw(template, word_power, dist_method="euclidean", open_end=True)
+alignment.normalizedDistance
+alignment.plot()
