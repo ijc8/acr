@@ -121,33 +121,45 @@ def match_sequence2(X, y, signal, plot=False, zscore=True):
     template_starts = np.concatenate(([0], np.cumsum(template_lengths[:-1])))
     template_ends = np.cumsum(template_lengths) - 1
     template_concat = np.concatenate(templates)
-    distances = np.empty((signal.size, template_concat.size))
+    distances = np.abs(template_concat - signal[:, None])
     costs = np.empty((signal.size, template_concat.size))
     pointers = -np.ones((signal.size, template_concat.size, 2), dtype=int)
-    for i in range(signal.size):
-        distances[i] = np.abs(template_concat - signal[i])
+    # Unroll i == 0.
+    for start, length in zip(template_starts, template_lengths):
+        # Unroll j == 0.
+        costs[0, start] = distances[0, start]
+
+        for j in range(1, length):
+            # Only one step is possible: must have come from (0, start+j-1).
+            costs[0, start+j] = distances[0, start+j] + costs[0, start+j-1]
+            pointers[0, start+j] = [0, start+j-1]
+
+    for i in range(1, signal.size):
         for start, length in zip(template_starts, template_lengths):
-            for j in range(length):
-                if i == 0 and j == 0:
-                    costs[i, start+j] = distances[i, start+j]
-                    continue
-                possibilities = []
-                if i > 0:
-                    possibilities.append((1, i-1, start+j))
-                    if j == 0:
-                        # Could come from the end of any other template.
-                        for template_end in template_ends:
-                            possibilities.append((1, i-1, template_end))
-                if j > 0:
-                    possibilities.append((1, i, start+j-1))
-                if i > 0 and j > 0:
-                    possibilities.append((2, i-1, start+j-1))
+            # Unroll j == 0.
+            steps = [(i-1, start)]
+            # Could come from the end of any other template.
+            for template_end in template_ends:
+                steps.append((i-1, template_end))
+            dist = distances[i, start]
+            step_costs = [dist + costs[r, c] for r, c in steps]
+            best = np.argmin(step_costs)
+            costs[i, start] = step_costs[best]
+            pointers[i, start] = steps[best]
+
+            for j in range(1, length):
+                # Note extra cost on diagonal step for normalization/fairness.
+                # (See https://dynamictimewarping.github.io/faq/.)
+                steps = [
+                    (1, i-1, start+j),
+                    (1, i, start+j-1),
+                    (2, i-1, start+j-1),
+                ]
                 dist = distances[i, start+j]
-                step_costs = [f * dist + costs[r, c] for f, r, c in possibilities]
+                step_costs = [f * dist + costs[r, c] for f, r, c in steps]
                 best = np.argmin(step_costs)
-                # TODO: Normalize by path length!
                 costs[i, start+j] = step_costs[best]
-                pointers[i, start+j] = possibilities[best][1:]
+                pointers[i, start+j] = steps[best][1:]
     if plot:
         plt.figure()
         plt.imshow(distances.T, origin='lower', aspect='auto', interpolation='none')
@@ -156,13 +168,14 @@ def match_sequence2(X, y, signal, plot=False, zscore=True):
         plt.imshow(costs.T, origin='lower', aspect='auto')
         for s in template_starts:
             plt.axhline(s, color='orange', opacity=0.3)
+
+    # Backtrack to find best path through cumulative cost matrix.
     pos = np.array([costs.shape[0] - 1, template_ends[costs[-1, template_ends].argmin()]])
     transitions = []
     while not (pos[0] == 0 and pos[1] in template_starts):
-        assert(pos[0] >= 0 and pos[1] >= 0)
         parent = pointers[tuple(pos)]
-        delta = parent - pos
         if plot:
+            delta = parent - pos
             plt.arrow(
                 pos[0], pos[1], delta[0], delta[1],
                 color='red', head_width=0.05, length_includes_head=True,
@@ -171,6 +184,7 @@ def match_sequence2(X, y, signal, plot=False, zscore=True):
             transitions.append(pos)
         pos = parent
     transitions.append(pos)
+
     if plot:
         plt.show()
     template_seq = [template_starts.tolist().index(p[1]) for p in transitions[::-1]]
@@ -195,7 +209,7 @@ def evaluate_sequence(length, **kwargs):
     print("expected: ", y_seq)
     print("predicted:", y_pred)
 
-evaluate_sequence(5)
+evaluate_sequence(2)
 
 word = np.concatenate((a_power, b_power))
 
