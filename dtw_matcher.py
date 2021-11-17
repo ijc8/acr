@@ -114,41 +114,81 @@ def match_sequence2(X, y, signal):
     templates = power[X[:, 0]]
     template_lengths = np.array([template.size for template in templates])
     template_starts = np.concatenate(([0], np.cumsum(template_lengths[:-1])))
+    template_ends = np.cumsum(template_lengths) - 1
     template_concat = np.concatenate(templates)
     distances = np.empty((signal.size, template_concat.size))
-    costs = np.empty((signal.size + 1, template_concat.size))
-    costs[0] = np.inf
+    costs = np.empty((signal.size, template_concat.size))
     print(template_starts, costs.shape)
-    costs[0, template_starts] = 0
-    pointers = np.empty((signal.size, template_concat.size, 2))
-    for i in range(1, signal.size + 1):
-        distances[i-1] = np.abs(template_concat - signal[i-1])
+    pointers = -np.ones((signal.size, template_concat.size, 2), dtype=int)
+    for i in range(signal.size):
+        distances[i] = np.abs(template_concat - signal[i])
         for start, length in zip(template_starts, template_lengths):
             for j in range(length):
+                if i == 0 and j == 0:
+                    costs[i, start+j] = distances[i, start+j]
+                    continue
                 possibilities = []
                 if i > 0:
                     possibilities.append((i-1, start+j))
                     if j == 0:
                         # Could come from the end of any other template.
-                        for s, l in zip(template_starts, template_lengths):
-                            possibilities.append((i-1, s+l-1))
+                        for template_end in template_ends:
+                            possibilities.append((i-1, template_end))
                 if j > 0:
                     possibilities.append((i, start+j-1))
                 if i > 0 and j > 0:
                     possibilities.append((i-1, start+j-1))
                 r, c = min(possibilities, key=lambda p: costs[p[0], p[1]])
-                costs[i, start+j] = distances[i-1, start+j] + costs[r, c]
-                pointers[i-1, start+j] = [r, c]
-    plt.imshow(distances.T, origin='lower', aspect='auto')
+                # TODO: Normalize by path length!
+                costs[i, start+j] = distances[i, start+j] + costs[r, c]
+                pointers[i, start+j] = [r, c]
+    plt.figure()
+    plt.imshow(distances.T, origin='lower', aspect='auto', interpolation='none')
     plt.show()
-    costs = costs[1:]
+    plt.figure()
     plt.imshow(costs.T, origin='lower', aspect='auto')
+    # plt.arrow(0, 0, 200, 100, color='red')
+    print(costs.shape)
+    pos = np.array([costs.shape[0] - 1, template_ends[costs[-1, template_ends].argmin()]])
+    for s in template_starts:
+        print(s)
+        plt.axhline(s, color='orange')
+    hmm = []
+    while not (pos[0] == 0 and pos[1] in template_starts):
+        print(pos)
+        assert(pos[0] >= 0 and pos[1] >= 0)
+        parent = pointers[tuple(pos)]
+        delta = parent - pos
+        plt.arrow(
+            pos[0], pos[1], delta[0], delta[1],
+            color='red', head_width=0.05, length_includes_head=True,
+        )
+        if pos[1] in template_starts and parent[1] in template_ends:
+            hmm.append((pos, parent))
+        pos = parent
+    print(hmm)
+    template_pairs = [
+        (template_starts.tolist().index(a[1]), template_ends.tolist().index(b[1]))
+        for a, b in hmm
+    ]
+    print(template_pairs)
+    template_seq = ([e for e, s in template_pairs] + [template_pairs[-1][1]])[::-1]
+    print(template_seq)
+    print([y[i] for i in template_seq])
+    plt.show()
     return costs
+
+%matplotlib tk
 
 word = np.concatenate((a_power, b_power))
 
+# match_sequence(X_train, y_train, word)
+
+import matplotlib.pyplot as plt
 single_templates = X[indices[:, 2] == 0]
-costs = match_sequence2(single_templates, None, word)
+single_labels = y[indices[:, 2] == 0]
+word = np.concatenate((power[single_templates[0, 0]], power[single_templates[2, 0]]))
+costs = match_sequence2(single_templates, single_labels, word)
 
 letters, fs = evaluate.load_dataset()
 letters = letters[:1, :4, :]
