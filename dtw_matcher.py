@@ -112,6 +112,10 @@ def match_sequence(X, y, signal):
 
 def match_sequence2(X, y, signal):
     templates = power[X[:, 0]]
+    # Experimenting with z-normalization here.
+    for i in range(templates.size):
+        templates[i] = stats.zscore(templates[i])
+    signal = stats.zscore(signal)
     template_lengths = np.array([template.size for template in templates])
     template_starts = np.concatenate(([0], np.cumsum(template_lengths[:-1])))
     template_ends = np.cumsum(template_lengths) - 1
@@ -129,19 +133,21 @@ def match_sequence2(X, y, signal):
                     continue
                 possibilities = []
                 if i > 0:
-                    possibilities.append((i-1, start+j))
+                    possibilities.append((1, i-1, start+j))
                     if j == 0:
                         # Could come from the end of any other template.
                         for template_end in template_ends:
-                            possibilities.append((i-1, template_end))
+                            possibilities.append((1, i-1, template_end))
                 if j > 0:
-                    possibilities.append((i, start+j-1))
+                    possibilities.append((1, i, start+j-1))
                 if i > 0 and j > 0:
-                    possibilities.append((i-1, start+j-1))
-                r, c = min(possibilities, key=lambda p: costs[p[0], p[1]])
+                    possibilities.append((2, i-1, start+j-1))
+                dist = distances[i, start+j]
+                step_costs = [f * dist + costs[r, c] for f, r, c in possibilities]
+                best = np.argmin(step_costs)
                 # TODO: Normalize by path length!
-                costs[i, start+j] = distances[i, start+j] + costs[r, c]
-                pointers[i, start+j] = [r, c]
+                costs[i, start+j] = step_costs[best]
+                pointers[i, start+j] = possibilities[best][1:]
     plt.figure()
     plt.imshow(distances.T, origin='lower', aspect='auto', interpolation='none')
     plt.show()
@@ -155,24 +161,20 @@ def match_sequence2(X, y, signal):
         plt.axhline(s, color='orange')
     hmm = []
     while not (pos[0] == 0 and pos[1] in template_starts):
-        print(pos)
         assert(pos[0] >= 0 and pos[1] >= 0)
         parent = pointers[tuple(pos)]
+        print(pos, parent)
         delta = parent - pos
         plt.arrow(
             pos[0], pos[1], delta[0], delta[1],
             color='red', head_width=0.05, length_includes_head=True,
         )
         if pos[1] in template_starts and parent[1] in template_ends:
-            hmm.append((pos, parent))
+            hmm.append(pos)
         pos = parent
+    hmm.append(pos)
     print(hmm)
-    template_pairs = [
-        (template_starts.tolist().index(a[1]), template_ends.tolist().index(b[1]))
-        for a, b in hmm
-    ]
-    print(template_pairs)
-    template_seq = ([e for e, s in template_pairs] + [template_pairs[-1][1]])[::-1]
+    template_seq = [template_starts.tolist().index(p[1]) for p in hmm[::-1]]
     print(template_seq)
     print([y[i] for i in template_seq])
     plt.show()
@@ -182,13 +184,55 @@ def match_sequence2(X, y, signal):
 
 word = np.concatenate((a_power, b_power))
 
+plt.plot(np.concatenate((a_power, b_power)))
+plt.plot(np.concatenate((power[single_templates[0, 0]], power[single_templates[3, 0]])))
+plt.plot(np.concatenate((power[single_templates[0, 0]], power[single_templates[1, 0]])))
+
+# Here's the trouble.
+# This:
+plt.specgram(letters[0, 1, 16], NFFT=2048, noverlap=2048-512)
+plt.plot(get_power(letters[0, 1, 16]))
+# matches this:
+plt.specgram(letters[0, 3, 0], NFFT=2048, noverlap=2048-512)
+plt.plot(get_power(letters[0, 3, 0]))
+# when we'd like to match this:
+plt.specgram(letters[0, 1, 0], NFFT=2048, noverlap=2048-512)
+plt.plot(get_power(letters[0, 1, 0]))
+
+plt.plot(get_power(letters[0, 1, 16])[:112])
+plt.plot(get_power(letters[0, 1, 0])[:101])
+plt.plot(get_power(letters[0, 3, 0]))
+
+from scipy import stats
+costs = match_sequence2(single_templates, single_labels, b_power)
+dtw(get_power(letters[0, 1, 16])[:112], get_power(letters[0, 1, 0])[:101]).normalizedDistance
+dtw(get_power(letters[0, 1, 16])[:112], get_power(letters[0, 3, 0])).normalizedDistance
+dtw(get_power(letters[0, 1, 16])[:112], get_power(letters[0, 1, 0])[:101], keep_internals=True).plot("twoway")
+dtw(get_power(letters[0, 1, 16])[:112], get_power(letters[0, 3, 0]), keep_internals=True).plot("twoway")
+
+# Somehow, z-normalization fixes this.
+query = stats.zscore(get_power(letters[0, 1, 16])) # [:112])
+right = stats.zscore(get_power(letters[0, 1, 0])) # [:101])
+wrong = stats.zscore(get_power(letters[0, 3, 0]))
+plt.plot(query)
+plt.plot(right)
+plt.plot(wrong)
+dtw(query, right).normalizedDistance
+dtw(query, wrong).normalizedDistance
+
 # match_sequence(X_train, y_train, word)
+
+power[single_templates[1, 0]].shape
+power[single_templates[3, 0]].shape
+plt.plot(word)
 
 import matplotlib.pyplot as plt
 single_templates = X[indices[:, 2] == 0]
 single_labels = y[indices[:, 2] == 0]
-word = np.concatenate((power[single_templates[0, 0]], power[single_templates[2, 0]]))
+word = np.concatenate((power[single_templates[0, 0]], power[single_templates[3, 0]]))
+word = np.concatenate((a_power, b_power))
 costs = match_sequence2(single_templates, single_labels, word)
+costs = match_sequence2(X, y, word)
 
 letters, fs = evaluate.load_dataset()
 letters = letters[:1, :4, :]
