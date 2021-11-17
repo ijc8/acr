@@ -110,19 +110,19 @@ def match_sequence(X, y, signal):
         position += length
     return seq
 
-def match_sequence2(X, y, signal):
+def match_sequence2(X, y, signal, plot=False, zscore=True):
     templates = power[X[:, 0]]
-    # Experimenting with z-normalization here.
-    for i in range(templates.size):
-        templates[i] = stats.zscore(templates[i])
-    signal = stats.zscore(signal)
+    if zscore:
+        # Experimenting with z-normalization here.
+        for i in range(templates.size):
+            templates[i] = stats.zscore(templates[i])
+        signal = stats.zscore(signal)
     template_lengths = np.array([template.size for template in templates])
     template_starts = np.concatenate(([0], np.cumsum(template_lengths[:-1])))
     template_ends = np.cumsum(template_lengths) - 1
     template_concat = np.concatenate(templates)
     distances = np.empty((signal.size, template_concat.size))
     costs = np.empty((signal.size, template_concat.size))
-    print(template_starts, costs.shape)
     pointers = -np.ones((signal.size, template_concat.size, 2), dtype=int)
     for i in range(signal.size):
         distances[i] = np.abs(template_concat - signal[i])
@@ -148,39 +148,54 @@ def match_sequence2(X, y, signal):
                 # TODO: Normalize by path length!
                 costs[i, start+j] = step_costs[best]
                 pointers[i, start+j] = possibilities[best][1:]
-    plt.figure()
-    plt.imshow(distances.T, origin='lower', aspect='auto', interpolation='none')
-    plt.show()
-    plt.figure()
-    plt.imshow(costs.T, origin='lower', aspect='auto')
-    # plt.arrow(0, 0, 200, 100, color='red')
-    print(costs.shape)
+    if plot:
+        plt.figure()
+        plt.imshow(distances.T, origin='lower', aspect='auto', interpolation='none')
+        plt.show()
+        plt.figure()
+        plt.imshow(costs.T, origin='lower', aspect='auto')
+        for s in template_starts:
+            plt.axhline(s, color='orange', opacity=0.3)
     pos = np.array([costs.shape[0] - 1, template_ends[costs[-1, template_ends].argmin()]])
-    for s in template_starts:
-        print(s)
-        plt.axhline(s, color='orange')
-    hmm = []
+    transitions = []
     while not (pos[0] == 0 and pos[1] in template_starts):
         assert(pos[0] >= 0 and pos[1] >= 0)
         parent = pointers[tuple(pos)]
-        print(pos, parent)
         delta = parent - pos
-        plt.arrow(
-            pos[0], pos[1], delta[0], delta[1],
-            color='red', head_width=0.05, length_includes_head=True,
-        )
+        if plot:
+            plt.arrow(
+                pos[0], pos[1], delta[0], delta[1],
+                color='red', head_width=0.05, length_includes_head=True,
+            )
         if pos[1] in template_starts and parent[1] in template_ends:
-            hmm.append(pos)
+            transitions.append(pos)
         pos = parent
-    hmm.append(pos)
-    print(hmm)
-    template_seq = [template_starts.tolist().index(p[1]) for p in hmm[::-1]]
-    print(template_seq)
-    print([y[i] for i in template_seq])
-    plt.show()
-    return costs
+    transitions.append(pos)
+    if plot:
+        plt.show()
+    template_seq = [template_starts.tolist().index(p[1]) for p in transitions[::-1]]
+    predicted = y[template_seq]
+    return predicted
 
-%matplotlib tk
+import random
+import time
+
+def evaluate_sequence(length, **kwargs):
+    "Generate a random 'word' from testing letters and try to decode it using training letters."
+    indices = np.array([random.randrange(len(X_test)) for _ in range(length)])
+    word = np.concatenate([power[X_test[i, 0]] for i in indices])
+    y_seq = y_test[indices]
+    start = time.time()
+    y_pred = match_sequence2(X_train, y_train, word, **kwargs)
+    end = time.time()
+    word_time = ((len(word) - 1)*512 + 2048) / 44100
+    calc_time = end - start
+    print("word time:", word_time)
+    print(f"calc time: {calc_time} ({round(calc_time / word_time * 100, 2)}% of realtime)")
+    print("expected: ", y_seq)
+    print("predicted:", y_pred)
+
+evaluate_sequence(5)
 
 word = np.concatenate((a_power, b_power))
 
@@ -232,7 +247,7 @@ single_labels = y[indices[:, 2] == 0]
 word = np.concatenate((power[single_templates[0, 0]], power[single_templates[3, 0]]))
 word = np.concatenate((a_power, b_power))
 costs = match_sequence2(single_templates, single_labels, word)
-costs = match_sequence2(X, y, word)
+costs = match_sequence2(X_train, y_train, word)
 
 letters, fs = evaluate.load_dataset()
 letters = letters[:1, :4, :]
