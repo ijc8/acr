@@ -32,7 +32,7 @@ def dtw_dist(a, b):
     b = power[int(b[0])]
     return dtw(a, b, dist_method="euclidean", distance_only=True).normalizedDistance
 
-if __name__ == '__main__':
+if False:
     from sklearn.neighbors import KNeighborsClassifier
     cls = KNeighborsClassifier(1, metric=dtw_dist)
     evaluate.run(preprocessor, cls, np.arange(4))
@@ -110,86 +110,54 @@ def match_sequence_naive(X, y, signal):
         position += length
     return seq
 
-def match_sequence(X, y, signal, plot=False, zscore=True):
-    templates = power[X[:, 0]]
-    if zscore:
-        # Experimenting with z-normalization here.
-        for i in range(templates.size):
-            templates[i] = stats.zscore(templates[i])
-        signal = stats.zscore(signal)
-    template_lengths = np.array([template.size for template in templates])
-    template_starts = np.concatenate(([0], np.cumsum(template_lengths[:-1])))
-    template_ends = np.cumsum(template_lengths) - 1
-    template_concat = np.concatenate(templates)
-    distances = np.abs(template_concat - signal[:, None])
-    costs = np.empty((signal.size, template_concat.size))
-    pointers = -np.ones((signal.size, template_concat.size, 2), dtype=int)
+from numba import jit
+
+
+
+@jit(nopython=True)
+def compute_cost_matrix(distances, template_starts, template_lengths, template_ends):
+    costs = np.empty_like(distances)
+    pointers = np.empty(distances.shape + (2,), dtype=np.int_)
+    template_start_transitions = np.empty((len(template_ends) + 1), dtype=np.int_)
+    template_start_transitions[1:] = template_ends
     # Unroll i == 0.
     for start, length in zip(template_starts, template_lengths):
         # Unroll j == 0.
         costs[0, start] = distances[0, start]
-
         for j in range(1, length):
             # Only one step is possible: must have come from (0, start+j-1).
             costs[0, start+j] = distances[0, start+j] + costs[0, start+j-1]
             pointers[0, start+j] = [0, start+j-1]
-
-    for i in range(1, signal.size):
+    for i in range(1, distances.shape[0]):
         for start, length in zip(template_starts, template_lengths):
             # Unroll j == 0.
-            steps = [(i-1, start)]
             # Could come from the end of any other template.
-            for template_end in template_ends:
-                steps.append((i-1, template_end))
-            dist = distances[i, start]
-            step_costs = [dist + costs[r, c] for r, c in steps]
+            template_start_transitions[0] = start
+            step_costs = costs[i-1][template_start_transitions]
             best = np.argmin(step_costs)
-            costs[i, start] = step_costs[best]
-            pointers[i, start] = steps[best]
+            costs[i, start] = distances[i, start] + step_costs[best]
+            pointers[i, start, 0] = i - 1
+            pointers[i, start, 1] = template_start_transitions[best]
 
             # Vectorized 1 <= j < length
-            js = np.arange(1, length)
-            steps = np.empty((js.size, 3, 2), dtype=int)
-            steps[:, 0, 0] = i - 1
-            steps[:, 1, 0] = i
-            steps[:, 2, 0] = i - 1
-            steps[:, 0, 1] = start + js
-            steps[:, 1, 1] = start + js - 1
-            steps[:, 2, 1] = start + js - 1
+            for j in range(1, length):
+                steps = np.array([
+                    [i-1, start+j],
+                    [i, start+j-1],
+                    [i-1, start+j-1],
+                ])
+                dist = distances[i, start+j]
+                step_costs = np.array([
+                    dist + costs[i-1, start+j],
+                    dist + costs[i, start+j-1],
+                    2*dist + costs[i-1, start+j-1],
+                ])
+                best = np.argmin(step_costs)
+                costs[i, start + j] = step_costs[best]
+                pointers[i, start + j] = steps[best]
+    return costs, pointers
 
-            step_costs = np.empty((js.size, 3))
-            dists = distances[i, start + js]
-            # Note extra cost on diagonal step for normalization/fairness.
-            # (See https://dynamictimewarping.github.io/faq/.)
-            step_costs[:, 0] = dists + costs[steps[:, 0, 0], steps[:, 0, 1]]
-            # Whoops, tricky for vectorization: this has a dependence on (i, j-1)!
-            # Some tricky stuff follows below.
-            # step_costs[:, 1] = dists + costs[steps[:, 1, 0], steps[:, 1, 1]]
-            step_costs[:, 2] = 2*dists + costs[steps[:, 2, 0], steps[:, 2, 1]]
-
-            partial_costs = np.min(step_costs[:, [0, 2]], axis=1)
-
-            # step_costs[:, 1] = dists
-            step_costs[0, 1] = dists[0] + costs[i, start]
-            # TODO: Vectorize this last little bit.
-            for j in js[1:]:
-                step_costs[j-1, 1] = np.minimum(
-                    dists[j-1] + partial_costs[j-2],
-                    dists[j-1] + step_costs[j-2, 1]
-                )
-
-            best = np.argmin(step_costs, axis=1)
-            costs[i, start + js] = step_costs[js-1, best]
-            pointers[i, start + js] = steps[js-1, best]
-    if plot:
-        plt.figure()
-        plt.imshow(distances.T, origin='lower', aspect='auto', interpolation='none')
-        plt.show()
-        plt.figure()
-        plt.imshow(costs.T, origin='lower', aspect='auto')
-        for s in template_starts:
-            plt.axhline(s, color='orange', alpha=0.3)
-
+def backtrack(costs, pointers, template_starts, template_ends, plot=False):
     # Backtrack to find best path through cumulative cost matrix.
     pos = np.array([costs.shape[0] - 1, template_ends[costs[-1, template_ends].argmin()]])
     transitions = []
@@ -205,12 +173,38 @@ def match_sequence(X, y, signal, plot=False, zscore=True):
             transitions.append(pos)
         pos = parent
     transitions.append(pos)
+    return transitions
 
+def match_sequence(X, y, signal, plot=False, zscore=True):
+    templates = power[X[:, 0]]
+    if zscore:
+        # Experimenting with z-normalization here.
+        for i in range(templates.size):
+            templates[i] = stats.zscore(templates[i])
+        signal = stats.zscore(signal)
+    template_lengths = np.array([template.size for template in templates])
+    template_starts = np.concatenate(([0], np.cumsum(template_lengths[:-1])))
+    template_ends = np.cumsum(template_lengths) - 1
+    template_concat = np.concatenate(templates)
+    distances = np.abs(template_concat - signal[:, None])
+
+    costs, pointers = compute_cost_matrix(distances, template_starts, template_lengths, template_ends)
     if plot:
+        plt.figure()
+        plt.imshow(distances.T, origin='lower', aspect='auto', interpolation='none')
         plt.show()
+        plt.figure()
+        plt.imshow(costs.T, origin='lower', aspect='auto')
+        for s in template_starts:
+            plt.axhline(s, color='orange', alpha=0.3)
+
+    transitions = backtrack(costs, pointers, template_starts, template_ends, plot)
     template_seq = [template_starts.tolist().index(p[1]) for p in transitions[::-1]]
     predicted = y[template_seq]
+    if plot:
+        plt.show()
     return predicted
+
 
 import random
 import time
@@ -246,6 +240,7 @@ def evaluate_sequence(length, **kwargs):
 if __name__ == '__main__':
     evaluate_sequence(2)
 
+if False:
     word = np.concatenate((a_power, b_power))
 
     plt.plot(np.concatenate((a_power, b_power)))
