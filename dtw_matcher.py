@@ -117,60 +117,65 @@ from numba import jit
 @jit(nopython=True)
 def compute_cost_matrix(distances, template_starts, template_lengths, template_ends):
     costs = np.empty_like(distances)
-    pointers = np.empty(distances.shape + (2,), dtype=np.int_)
-    template_start_transitions = np.empty((len(template_ends) + 1), dtype=np.int_)
-    template_start_transitions[1:] = template_ends
-    # Unroll i == 0.
+    pointers = np.empty_like(distances, dtype=np.int_)
+    template_transitions = np.empty((len(template_ends) + 1), dtype=np.int_)
+    template_transitions[1:] = template_ends
+
+    # Steps:
+    # 0: Down -> Up (i, j-1)
+    # 1: Left -> Right (i-1, j)
+    # 2: Diagonal (i-1, j-1)
+    # Transitions between templates are represented by 3 + the previous template's index.
+
     for start, length in zip(template_starts, template_lengths):
-        # Unroll j == 0.
-        costs[0, start] = distances[0, start]
-        for j in range(1, length):
-            # Only one step is possible: must have come from (0, start+j-1).
-            costs[0, start+j] = distances[0, start+j] + costs[0, start+j-1]
-            pointers[0, start+j] = [0, start+j-1]
+        # Only one step is possible: must come from below.
+        costs[0, start:start+length] = np.cumsum(distances[0, start:start+length])
+        pointers[0, start+1:start+length] = 0
     for i in range(1, distances.shape[0]):
         for start, length in zip(template_starts, template_lengths):
-            # Unroll j == 0.
-            # Could come from the end of any other template.
-            template_start_transitions[0] = start
-            step_costs = costs[i-1][template_start_transitions]
+            # Could come from the left, or from the end of any other template.
+            template_transitions[0] = start
+            step_costs = costs[i-1][template_transitions]
             best = np.argmin(step_costs)
             costs[i, start] = distances[i, start] + step_costs[best]
-            pointers[i, start, 0] = i - 1
-            pointers[i, start, 1] = template_start_transitions[best]
+            pointers[i, start] = 1 if best == 0 else best + 2
 
-            # Vectorized 1 <= j < length
-            for j in range(1, length):
-                steps = np.array([
-                    [i-1, start+j],
-                    [i, start+j-1],
-                    [i-1, start+j-1],
-                ])
-                dist = distances[i, start+j]
+            for j in range(start + 1, start + length):
+                # Could come from any direction (down, left, diagonal).
+                dist = distances[i, j]
                 step_costs = np.array([
-                    dist + costs[i-1, start+j],
-                    dist + costs[i, start+j-1],
-                    2*dist + costs[i-1, start+j-1],
+                    dist + costs[i, j-1],
+                    dist + costs[i-1, j],
+                    2*dist + costs[i-1, j-1],
                 ])
                 best = np.argmin(step_costs)
-                costs[i, start + j] = step_costs[best]
-                pointers[i, start + j] = steps[best]
+                costs[i, j] = step_costs[best]
+                pointers[i, j] = best
     return costs, pointers
 
 def backtrack(costs, pointers, template_starts, template_ends, plot=False):
     # Backtrack to find best path through cumulative cost matrix.
+    # (This just returns the sequence of templates, not every single index in the path.)
     pos = np.array([costs.shape[0] - 1, template_ends[costs[-1, template_ends].argmin()]])
+    steps = np.array([
+        [0, 1],
+        [1, 0],
+        [1, 1]
+    ])
     transitions = []
     while not (pos[0] == 0 and pos[1] in template_starts):
-        parent = pointers[tuple(pos)]
+        step = pointers[pos[0], pos[1]]
+        if step < len(steps):
+            parent = pos - steps[step]
+        else:
+            parent = np.array([pos[0] - 1, template_ends[step - 3]])
+            transitions.append(pos)
         if plot:
             delta = parent - pos
             plt.arrow(
                 pos[0], pos[1], delta[0], delta[1],
                 color='red', head_width=0.05, length_includes_head=True,
-            )
-        if pos[1] in template_starts and parent[1] in template_ends:
-            transitions.append(pos)
+            )          
         pos = parent
     transitions.append(pos)
     return transitions
@@ -238,7 +243,8 @@ def evaluate_sequence(length, **kwargs):
     print("predicted:", y_pred)
 
 if __name__ == '__main__':
-    evaluate_sequence(2)
+    evaluate_sequence(5)
+    evaluate_sequence(5)
 
 if False:
     word = np.concatenate((a_power, b_power))
