@@ -14,7 +14,7 @@ def get_power(x):
     # return np.log10((block_audio(np.diff(x), 2048, 512)**2).sum(axis=1).clip(1e-10, 1)) * 10
     xb = block_audio(np.diff(x), 2048, 512)
     # xb *= np.hanning(xb.shape[1])[None, :]
-    return np.log10((xb**2).sum(axis=1).clip(1e-10, 1)) * 10
+    return np.log10(np.maximum((xb**2).sum(axis=1), 1e-10)) * 10
     # spec = np.abs(np.fft.rfft(xb))[:, :22]
     # return (spec**2).sum(axis=1)
     # return np.log10((spec**2).sum(axis=1).clip(1e-10, 1)) * 10
@@ -241,10 +241,19 @@ def evaluate_sequence(length, **kwargs):
     print(f"calc time: {calc_time} ({round(calc_time / word_time * 100, 2)}% of realtime)")
     print("expected: ", y_seq)
     print("predicted:", y_pred)
+    return y_seq, y_pred
 
 if __name__ == '__main__':
-    evaluate_sequence(5)
-    evaluate_sequence(5)
+    evaluate_sequence(4)
+    total = correct = 0
+    for _ in range(100):
+        y_seq, y_pred = evaluate_sequence(4)
+        total += 1
+        if y_seq.shape == y_pred.shape and (y_seq == y_pred).all():
+            correct += 1
+    print(correct / total, 1 - correct / total)
+    # Got 84% right (full match), 16% wrong with zscore=True.
+    # Got 81% right, 19% wrong with zscore=False.
 
 if False:
     word = np.concatenate((a_power, b_power))
