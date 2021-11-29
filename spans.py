@@ -100,7 +100,7 @@ if __name__ == '__main__':
     # RadiusNeighbors seems to do a bit better than KNeighbors in general,
     # and especially for span count (which is 1D).
     print("== just span count ==")
-    evaluate.run(just_span_count, RadiusNeighborsClassifier(0))
+    evaluate.run(just_span_count, RadiusNeighborsClassifier(1))
     print("== just span times ==")
     evaluate.run(span_features([0]), KNeighborsClassifier(9))
     print("== just span durations ==")

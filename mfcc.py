@@ -2,7 +2,7 @@ from evaluate import load_dataset
 import librosa
 import numpy as np
 from dtw import dtw
-
+import evaluate
 
 letters, fs = load_dataset()
 letters = letters[:, :4, :]
