@@ -1,30 +1,96 @@
 import numpy as np
 from dtw import dtw
+from numpy.core.shape_base import block
+from scipy import signal
+from scipy.fft import fft
 from scipy import stats
 import evaluate
+import math
+from scipy.signal.windows import hann
+from matplotlib import pyplot as plt
+import librosa
 
-def block_audio(x, blockSize, hopSize):
-    numBlocks = (x.size - blockSize) // hopSize
-    xb = np.empty((numBlocks, blockSize))
-    for i in range(numBlocks):
-        xb[i] = x[i*hopSize:i*hopSize + blockSize]
+# def block_audio(x, blockSize, hopSize):
+#     numBlocks = (x.size - blockSize) // hopSize
+#     xb = np.empty((numBlocks, blockSize))
+#     for i in range(numBlocks):
+#         xb[i] = x[i*hopSize:i*hopSize + blockSize]
+#     return xb
+
+def  block_audio(x,blockSize=2048,hopSize=512):
+    # allocate memory
+    numBlocks = math.ceil(x.size / hopSize)
+    xb = np.zeros([numBlocks, blockSize])
+    x = np.concatenate((x, np.zeros(blockSize)),axis=0)
+
+    for n in range(0, numBlocks):
+        i_start = n * hopSize
+        i_stop = np.min([x.size - 1, i_start + blockSize - 1])
+
+        xb[n][np.arange(0,blockSize)] = x[np.arange(i_start, i_stop + 1)]
     return xb
 
-def get_power(x):
+def compute_spectrogram(xb, fs):
+    window = signal.hann(xb.shape[1])
+    windowed_signal = xb*window
+    X_jw = fft(windowed_signal)
+    X = abs(X_jw)
+    f = np.arange(X.shape[1])*fs/X.shape[1]
+    bins = f.size // 2 + 1 
+    return X[:,:bins], f[:bins]
+
+
+def get_power(x, fs):
     # return np.log10((block_audio(np.diff(x), 2048, 512)**2).sum(axis=1).clip(1e-10, 1)) * 10
     xb = block_audio(np.diff(x), 2048, 512)
     # xb *= np.hanning(xb.shape[1])[None, :]
-    return np.log10(np.maximum((xb**2).sum(axis=1), 1e-10)) * 10
+    pow = np.log10(np.maximum((xb**2).sum(axis=1), 1e-10)) * 10
+    # print(pow.shape)
+    return pow
     # spec = np.abs(np.fft.rfft(xb))[:, :22]
     # return (spec**2).sum(axis=1)
     # return np.log10((spec**2).sum(axis=1).clip(1e-10, 1)) * 10
+
+def get_spectral_flux(x, fs):
+    xb = block_audio(x, 2048, 512)
+    mag = compute_spectrogram(xb, fs)[0]
+    diff = np.concatenate((np.zeros((1,mag.shape[1])), mag[:-1]), axis=0)
+    spectral_flux = np.sqrt(np.sum(np.square(mag-diff), axis=1))/(mag.shape[1]+1)
+    norm_flux = spectral_flux / np.max(abs(spectral_flux))
+    mean = np.mean(norm_flux)
+    std = np.std(norm_flux, ddof=1)
+    # return np.concatenate((np.array([mean, std]), norm_flux))
+    return norm_flux
+
+def get_spectral_centroid(x, fs):
+    # xb = block_audio(x, 2048, 512)
+    # mag, f = compute_spectrogram(xb, fs)
+    # spec_centroid = np.sum((mag*f),axis=1)/np.sum(mag, axis=1)
+    spec_centroid = librosa.feature.spectral_centroid(x, sr=fs).reshape(-1)
+    norm_centroid = spec_centroid/np.max(abs(spec_centroid))
+    # print(mag.shape)
+    # print(f.shape)
+    # print(spec_centroid.shape)
+    return norm_centroid
+
+def get_spectral_crest(x, fs):
+    xb = block_audio(x, 2048, 512)
+    mag_spectrum = compute_spectrogram(xb, fs)[0]
+    spec_crest = np.amax(mag_spectrum, axis=1)/np.sum(mag_spectrum, axis=1)
+    return spec_crest
+
+def get_mean_and_sd(x, fs, get_feature):
+    feature = get_feature(x, fs)
+    return np.mean(feature), np.std(feature, ddof=1)
+
 
 def preprocessor(letters, fs):
     global power
     power = np.empty(letters.shape, dtype=object)
     for i, letter in enumerate(letters):
-        power[i] = get_power(letter)
+        power[i] = get_spectral_centroid(letter, fs)
         # power[i] = (power[i] - power[i].mean()) / power[i].std()
+    print(len(power))
     return np.arange(len(power)).reshape(-1, 1)
 
 def dtw_dist(a, b):
@@ -243,7 +309,7 @@ def evaluate_sequence(length, **kwargs):
     print("predicted:", y_pred)
     return y_seq, y_pred
 
-if __name__ == '__main__':
+def main():
     evaluate_sequence(4)
     total = correct = 0
     for _ in range(100):
@@ -251,9 +317,14 @@ if __name__ == '__main__':
         total += 1
         if y_seq.shape == y_pred.shape and (y_seq == y_pred).all():
             correct += 1
-    print(correct / total, 1 - correct / total)
+    accuracy = correct/total
+    print(accuracy, 1 - accuracy)
+    return accuracy
     # Got 84% right (full match), 16% wrong with zscore=True.
     # Got 81% right, 19% wrong with zscore=False.
+
+if __name__ == '__main__':
+    main()
 
 if False:
     word = np.concatenate((a_power, b_power))

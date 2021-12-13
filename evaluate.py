@@ -1,6 +1,7 @@
 import numpy as np
 import scipy.io.wavfile
 import scipy.signal
+import sklearn
 
 from sklearn.metrics import ConfusionMatrixDisplay
 from sklearn.model_selection import train_test_split, LeaveOneGroupOut
@@ -31,6 +32,7 @@ def run(preprocessor, classifier, subset=None, seed=None):
     X = preprocessor(letters.reshape(-1), fs)
     y = np.indices(letters.shape)[1].reshape(-1)
     subjects = np.indices(letters.shape)[0].reshape(-1)
+
 
     # Single-subject accuracy (fully personalized mode)
     for subject in range(len(letters)):
