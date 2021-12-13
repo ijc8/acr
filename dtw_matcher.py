@@ -205,6 +205,7 @@ def match_sequence(X, y, signal, plot=False, zscore=True):
 
     transitions = backtrack(costs, pointers, template_starts, template_ends, plot)
     template_seq = [template_starts.tolist().index(p[1]) for p in transitions[::-1]]
+    print(template_seq)
     predicted = y[template_seq]
     if plot:
         plt.show()
@@ -215,22 +216,44 @@ import random
 import time
 
 letters, fs = evaluate.load_dataset()
-letters = letters[:1, :, :]  # [:1, :4, :]
+letters = letters[:1, :, 2:3]  # [:1, :4, :]
 X = preprocessor(letters.reshape(-1), fs)
 y = np.indices(letters.shape)[1].reshape(-1)
 subjects = np.indices(letters.shape)[0].reshape(-1)
 indices = np.indices(letters.shape).reshape((letters.ndim, -1)).T
 
-mask = np.ones(len(X), dtype=bool)
-from sklearn.model_selection import train_test_split
-X_train, X_test, y_train, y_test, indices_train, indices_test = train_test_split(
-    X[mask], y[mask], indices[mask], test_size=0.25, stratify=y[mask],
-)
+# mask = np.ones(len(X), dtype=bool)
+# from sklearn.model_selection import train_test_split
+# X_train, X_test, y_train, y_test, indices_train, indices_test = train_test_split(
+#     X[mask], y[mask], indices[mask], test_size=0.25, stratify=y[mask],
+# )
 
 import scipy
-fs, quick = scipy.io.wavfile.read("words/quick.wav")
+fs, quick = scipy.io.wavfile.read("words/the.wav")
+quick = quick.astype(float) / np.iinfo(np.int32).max
 quick = get_power(quick)
 match_sequence(X, y, quick)
+evaluate.alphabet[20]
+plt.plot(np.concatenate((power[20], power[0], power[1])))
+plt.plot(np.concatenate((power[19], power[7], power[4])))
+plt.plot(quick)
+
+plt.plot(np.concatenate((power[52], power[395], power[228])))
+indices[228]
+
+import matplotlib.pyplot as plt
+plt.plot(power[228])
+plt.plot(quick)
+
+plt.specgram(letters[0, 11, 8], NFFT=2048, noverlap=1024)
+
+spec, *_ = plt.specgram(np.diff(letters[0,11,8]), NFFT=512, noverlap=0);
+plt.yticks(np.arange(0, 250, 10))
+plt.imshow(np.log(spec), origin='lower', aspect='auto')
+plt.plot(np.log10(spec.sum(axis=0)))
+# Pretty good way to find non-stroke sounds:
+cutoff = 22
+plt.plot(np.min(spec[150:], axis=0) / np.max(spec[:cutoff], axis=0))
 
 def evaluate_sequence(length, **kwargs):
     "Generate a random 'word' from testing letters and try to decode it using training letters."

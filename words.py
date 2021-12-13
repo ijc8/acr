@@ -19,6 +19,14 @@ def get_power(x):
     xb = block_audio(np.diff(x), 2048, 512)
     return np.log10(np.maximum((xb**2).mean(axis=1), 1e-10)) * 10
 
+def get_spec(x):
+    # return np.log10(mlab.specgram(np.diff(x), 512, noverlap=0)[0].T)
+    return np.abs(np.fft.rfft(block_audio(np.diff(x), 1, 1), axis=1))
+
+def get_spec_diff(x):
+    # return np.log10(mlab.specgram(np.diff(x), 512, noverlap=0)[0].T)
+    return np.diff(np.abs(np.fft.rfft(block_audio(np.diff(x), 512, 512), axis=1)))
+
 def preprocessor(letters):
     global power
     power = np.empty(letters.shape, dtype=object)
@@ -93,19 +101,25 @@ def backtrack(costs, pointers, template_starts, template_ends, plot=False):
     transitions.append(pos)
     return transitions
 
-def match_sequence(X, y, signal, plot=False, zscore=True):
+def match_sequence(X, y, signal, plot=False, zscore=True, metric='euclidean'):
     templates = X[:]
     if zscore:
         # Experimenting with z-normalization here.
         for i in range(len(templates)):
             templates[i] = stats.zscore(templates[i])
         signal = stats.zscore(signal)
-    template_lengths = np.array([template.size for template in templates])
+
+    # templates.append(np.array([[-0.7]]))
+    templates.append(np.zeros((1, templates[0].shape[1])))
+    y = y + [' ']
+
+    template_lengths = np.array([len(template) for template in templates])
     template_starts = np.concatenate(([0], np.cumsum(template_lengths[:-1])))
     template_ends = np.cumsum(template_lengths) - 1
     template_concat = np.concatenate(templates)
-    distances = np.abs(template_concat - signal[:, None])
+    distances = scipy.spatial.distance.cdist(signal, template_concat, metric=metric)
 
+    print(distances.shape, template_starts, template_lengths, template_ends)
     costs, pointers = compute_cost_matrix(distances, template_starts, template_lengths, template_ends)
     if plot:
         plt.figure()
@@ -131,16 +145,20 @@ y = []
 for file in files:
     fs, x = scipy.io.wavfile.read(os.path.join("good", file))
     x = x.astype(float) / np.iinfo(np.int32).max
-    X.append(get_power(x))
+    # X.append(get_power(x)[:, None])
+    X.append(get_spec(x))
     y.append(os.path.splitext(file)[0])
 
 fs, word = scipy.io.wavfile.read("words/the.wav")
 word = word[:512*275]
 word = word.astype(float) / np.iinfo(np.int32).max
-word = get_power(word)
-match_sequence(X, y, word, zscore=True)
+# word = get_power(word)[:, None]
+word = get_spec(word)
+match_sequence(X, y, word, zscore=False, plot=True, metric='euclidean')
 # T, H, T, T - uh oh.
-
+y
+plt.plot(stats.zscore(X[3]))
 plt.plot(np.concatenate((X[1], X[0], X[1], X[1])))
 plt.plot(np.concatenate((X[1], X[0], X[2])))
-plt.plot(word)
+plt.imshow(np.log10(word.T), origin='lower', aspect='auto')
+plt.imshow(X[1].T, origin='lower', aspect='auto')
