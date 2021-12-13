@@ -2,10 +2,14 @@ import numpy as np
 import scipy.io.wavfile
 import scipy.signal
 import sklearn
+import dtw_matcher
 
 from sklearn.metrics import ConfusionMatrixDisplay
 from sklearn.model_selection import train_test_split, LeaveOneGroupOut
 from sklearn.pipeline import make_pipeline
+
+from sklearn.neighbors import KNeighborsClassifier
+cls = KNeighborsClassifier(1)
 
 
 alphabet = ''.join(chr(ord("A") + i) for i in range(26))
@@ -70,3 +74,9 @@ def run(preprocessor, classifier, subset=None, seed=None):
         y_pred = classifier.predict(X_test)
         print(f"Left-out-subject accuracy ({subject}): {round((y_pred == y_test).mean() * 100, 2)}%")
         ConfusionMatrixDisplay.from_predictions(y_test, y_pred, display_labels=labels, include_values=False)
+
+def main():
+    run(dtw_matcher.get_mean_and_sd, cls)
+
+if __name__ == "__main__":
+    main()

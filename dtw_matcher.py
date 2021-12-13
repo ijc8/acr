@@ -45,14 +45,17 @@ def get_power(x, fs):
     xb = block_audio(np.diff(x), 2048, 512)
     # xb *= np.hanning(xb.shape[1])[None, :]
     pow = np.log10(np.maximum((xb**2).sum(axis=1), 1e-10)) * 10
+    mean = np.mean(pow)
+    std = np.std(pow, ddof=1)
+    return np.concatenate((np.array([mean, std]), pow))
     # print(pow.shape)
-    return pow
+    # return pow
     # spec = np.abs(np.fft.rfft(xb))[:, :22]
     # return (spec**2).sum(axis=1)
     # return np.log10((spec**2).sum(axis=1).clip(1e-10, 1)) * 10
 
 def get_spectral_flux(x, fs):
-    xb = block_audio(x, 2048, 512)
+    xb = block_audio(np.diff(x), 2048, 512)
     mag = compute_spectrogram(xb, fs)[0]
     diff = np.concatenate((np.zeros((1,mag.shape[1])), mag[:-1]), axis=0)
     spectral_flux = np.sqrt(np.sum(np.square(mag-diff), axis=1))/(mag.shape[1]+1)
@@ -63,10 +66,10 @@ def get_spectral_flux(x, fs):
     return norm_flux
 
 def get_spectral_centroid(x, fs):
-    # xb = block_audio(x, 2048, 512)
-    # mag, f = compute_spectrogram(xb, fs)
-    # spec_centroid = np.sum((mag*f),axis=1)/np.sum(mag, axis=1)
-    spec_centroid = librosa.feature.spectral_centroid(x, sr=fs).reshape(-1)
+    xb = block_audio(np.diff(x), 2048, 512)
+    mag, f = compute_spectrogram(xb, fs)
+    spec_centroid = np.sum((mag*f),axis=1)/np.sum(mag, axis=1)
+    # spec_centroid = librosa.feature.spectral_centroid(x, sr=fs).reshape(-1)
     norm_centroid = spec_centroid/np.max(abs(spec_centroid))
     # print(mag.shape)
     # print(f.shape)
@@ -79,7 +82,7 @@ def get_spectral_crest(x, fs):
     spec_crest = np.amax(mag_spectrum, axis=1)/np.sum(mag_spectrum, axis=1)
     return spec_crest
 
-def get_mean_and_sd(x, fs, get_feature):
+def get_mean_and_sd(x, fs, get_feature=get_spectral_flux):
     feature = get_feature(x, fs)
     return np.mean(feature), np.std(feature, ddof=1)
 
@@ -88,7 +91,7 @@ def preprocessor(letters, fs):
     global power
     power = np.empty(letters.shape, dtype=object)
     for i, letter in enumerate(letters):
-        power[i] = get_spectral_centroid(letter, fs)
+        power[i] = np.concatenate((get_power(letter, fs),get_spectral_flux(letter, fs)))
         # power[i] = (power[i] - power[i].mean()) / power[i].std()
     print(len(power))
     return np.arange(len(power)).reshape(-1, 1)
