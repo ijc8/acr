@@ -14,7 +14,7 @@ def get_power(x):
     # return np.log10((block_audio(np.diff(x), 2048, 512)**2).sum(axis=1).clip(1e-10, 1)) * 10
     xb = block_audio(np.diff(x), 2048, 512)
     # xb *= np.hanning(xb.shape[1])[None, :]
-    return np.log10(np.maximum((xb**2).sum(axis=1), 1e-10)) * 10
+    return np.log10(np.maximum((xb**2).mean(axis=1), 1e-10)) * 10
     # spec = np.abs(np.fft.rfft(xb))[:, :22]
     # return (spec**2).sum(axis=1)
     # return np.log10((spec**2).sum(axis=1).clip(1e-10, 1)) * 10
@@ -35,7 +35,7 @@ def dtw_dist(a, b):
 if False:
     from sklearn.neighbors import KNeighborsClassifier
     cls = KNeighborsClassifier(1, metric=dtw_dist)
-    evaluate.run(preprocessor, cls, np.arange(4))
+    evaluate.run(preprocessor, cls, np.arange(2))
 
 # With four classes (ABCD):
 # Single-subject accuracy (0): 95.0%
@@ -215,7 +215,7 @@ import random
 import time
 
 letters, fs = evaluate.load_dataset()
-letters = letters[:1, :4, :]
+letters = letters[:1, :, :]  # [:1, :4, :]
 X = preprocessor(letters.reshape(-1), fs)
 y = np.indices(letters.shape)[1].reshape(-1)
 subjects = np.indices(letters.shape)[0].reshape(-1)
@@ -226,6 +226,11 @@ from sklearn.model_selection import train_test_split
 X_train, X_test, y_train, y_test, indices_train, indices_test = train_test_split(
     X[mask], y[mask], indices[mask], test_size=0.25, stratify=y[mask],
 )
+
+import scipy
+fs, quick = scipy.io.wavfile.read("words/quick.wav")
+quick = get_power(quick)
+match_sequence(X, y, quick)
 
 def evaluate_sequence(length, **kwargs):
     "Generate a random 'word' from testing letters and try to decode it using training letters."

@@ -133,18 +133,30 @@ index_train[idx]
 evaluate.alphabet.index("T")
 
 f, (a, b, c) = plt.subplots(3, figsize=(20, 20), sharex=True)
-X = mlab.specgram(np.diff(letters[0, 9, 8]), NFFT=512, noverlap=256)[0]
-# X -= np.median(X, axis=1)[:, None]
+X = mlab.specgram(np.diff(letters[0, 24, 3]), NFFT=512, noverlap=256)[0]
+cutoff = 22
+db = -11
+smooth = 19
+X -= np.median(X, axis=1)[:, None]
 a.imshow(np.log(X), origin='lower', aspect='auto')
-summed = X[:22].sum(axis=0)
+summed = X[:cutoff].sum(axis=0)
 # summed = X.sum(axis=0)
-summed = signal.medfilt(summed, 11)
+summed = signal.medfilt(summed, smooth)
 summed /= np.max(summed)
 b.plot(summed)
-b.axhline(10**(-12/10))
-c.plot(np.log(summed))
+b.axhline(10**(db/10))
+full = X.sum(axis=0)
+full = signal.medfilt(full, smooth)
+full /= np.max(full)
+c.plot(full)
+c.axhline(10**(db/10))
 f.show()
 
+len(extract_spans(letters[0, 24, 3], verbose=1, smooth=19))
+
+%matplotlib inline
+%matplotlib Tk
+len(extract_spans(letters[0, 19, 19], verbose=1))
 
 
 extract_spans(letters[1, 10, 1], verbose=1, cutoff=120)
