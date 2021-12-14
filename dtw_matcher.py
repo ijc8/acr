@@ -45,20 +45,18 @@ if False:
     cls = KNeighborsClassifier(1, metric=dtw_dist)
     evaluate.run(preprocessor, cls, np.arange(8))
 
-from sklearn.neighbors import KNeighborsClassifier
-cls = KNeighborsClassifier(1, metric=dtw_dist)
-by_num_classes = []
-for num_classes in range(1, 27):
-    print(f"With the first {num_classes} classes:")
-    r = evaluate.run(preprocessor, cls, np.arange(num_classes), seed=0, plot=False)
-    by_num_classes.append(r)
+def evaluate_by_num_classes():
+    from sklearn.neighbors import KNeighborsClassifier
+    cls = KNeighborsClassifier(1, metric=dtw_dist)
+    by_num_classes = []
+    for num_classes in range(1, 27):
+        print(f"With the first {num_classes} classes:")
+        r = evaluate.run(preprocessor, cls, np.arange(num_classes), seed=0, plot=False)
+        by_num_classes.append(r)
 
-import pickle
-with open("by_num_classes.pkl", "wb") as f:
-    pickle.dump(by_num_classes, f)
-
-# with open("by_num_classes.pkl", "rb") as f:
-#     tmp = pickle.load(f)
+    import pickle
+    with open("by_num_classes.pkl", "wb") as f:
+        pickle.dump(by_num_classes, f)
 
 # With four classes (ABCD):
 # Single-subject accuracy (0): 95.0%
