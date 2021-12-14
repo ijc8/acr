@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import numpy as np
 import scipy.io.wavfile
 import scipy.signal
@@ -35,6 +36,8 @@ def run(preprocessor, classifier, subset=None, seed=None, plot=True):
     results = np.empty((3, len(letters)))
 
     # Single-subject accuracy (fully personalized mode)
+    if plot:
+        fig, axes = plt.subplots(2, 2, figsize=(10, 10))
     for subject in range(len(letters)):
         mask = subjects == subject
         X_train, X_test, y_train, y_test = train_test_split(
@@ -46,7 +49,11 @@ def run(preprocessor, classifier, subset=None, seed=None, plot=True):
         results[0, subject] = (y_pred == y_test).mean()
         print(f"Single-subject accuracy ({subject}): {round((y_pred == y_test).mean() * 100, 2)}%")
         if plot:
-            ConfusionMatrixDisplay.from_predictions(y_test, y_pred, display_labels=labels, include_values=False)
+            ConfusionMatrixDisplay.from_predictions(y_test, y_pred, display_labels=labels, include_values=False, ax=axes.flat[subject])
+            axes.flat[subject].set_title(f"Subject {subject + 1}")
+    if plot:
+        fig.suptitle("Single-subject confusion matrices")
+        fig.savefig("plots/single_subject.png", facecolor='white', dpi=150)
 
     # All-subjects accuracy (semi-personalized mode)
     X_train, X_test, y_train, y_test, subjects_train, subjects_test = train_test_split(
@@ -57,16 +64,23 @@ def run(preprocessor, classifier, subset=None, seed=None, plot=True):
     y_pred = classifier.predict(X_test)
     print(f"All-subject accuracy: {round((y_pred == y_test).mean() * 100, 2)}%")
     if plot:
-        ConfusionMatrixDisplay.from_predictions(y_test, y_pred, display_labels=labels, include_values=False)
+        fig, axes = plt.subplots(2, 2, figsize=(10, 10))
     # Break down accuracy by subject
     for subject in range(len(letters)):
         mask = subjects_test == subject
         results[1, subject] = (y_pred[mask] == y_test[mask]).mean()
         print(f"- Subject {subject}: {round((y_pred[mask] == y_test[mask]).mean() * 100, 2)}%")
-        # ConfusionMatrixDisplay.from_predictions(y_test[mask], y_pred[mask], display_labels=labels, include_values=False)
+        if plot:
+            ConfusionMatrixDisplay.from_predictions(y_test[mask], y_pred[mask], display_labels=labels, include_values=False, ax=axes.flat[subject])
+            axes.flat[subject].set_title(f"Subject {subject + 1}")
+    if plot:
+        fig.suptitle("All-subjects confusion matrices")
+        fig.savefig("plots/all_subjects.png", facecolor='white', dpi=150)
 
     # Left-out-subjects accuracy (new user mode)
     logo = LeaveOneGroupOut()
+    if plot:
+        fig, axes = plt.subplots(2, 2, figsize=(10, 10))
     for subject, (train_index, test_index) in enumerate(logo.split(X, y, subjects)):
         X_train, X_test = X[train_index], X[test_index]
         y_train, y_test = y[train_index], y[test_index]
@@ -75,6 +89,10 @@ def run(preprocessor, classifier, subset=None, seed=None, plot=True):
         results[2, subject] = (y_pred == y_test).mean()
         print(f"Left-out-subject accuracy ({subject}): {round((y_pred == y_test).mean() * 100, 2)}%")
         if plot:
-            ConfusionMatrixDisplay.from_predictions(y_test, y_pred, display_labels=labels, include_values=False)
+            ConfusionMatrixDisplay.from_predictions(y_test, y_pred, display_labels=labels, include_values=False, ax=axes.flat[subject])
+            axes.flat[subject].set_title(f"Subject {subject + 1}")
+    if plot:
+        fig.suptitle("Left-out-subject confusion matrices")
+        fig.savefig("plots/left_out_subject.png", facecolor='white', dpi=150)
 
     return results

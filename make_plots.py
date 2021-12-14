@@ -23,3 +23,14 @@ from dtw_matcher import setup_evaluate_sequence, evaluate_sequence
 
 setup_evaluate_sequence(1, 4, 4)
 evaluate_sequence(4, plot=True)
+
+with open("baseline_cv.pkl", "rb") as f:
+    baseline_cv = pickle.load(f)
+
+print("Baseline: All-subjects: 84.23%")  # see Baseline.ipynb
+for subject in range(len(baseline_cv)):
+    accuracy = sum(int(tei[1] == tri[1]) for tei, tri in baseline_cv[subject]) / len(baseline_cv[subject])
+    print(f"Baseline: Left-out ({subject}): {round(accuracy * 100, 2)}%")
+
+from dtw_matcher import evaluate_dtw
+evaluate_dtw(26, plot=True)

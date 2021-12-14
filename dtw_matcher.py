@@ -1,7 +1,10 @@
 import numpy as np
 from dtw import dtw
 from scipy import stats
+from sklearn.neighbors import KNeighborsClassifier
+
 import evaluate
+
 
 def block_audio(x, blockSize, hopSize):
     numBlocks = (x.size - blockSize) // hopSize
@@ -40,10 +43,9 @@ def dtw_dist(a, b):
     b = power[int(b[0])]
     return dtw(a, b, dist_method="euclidean", distance_only=True).normalizedDistance
 
-if False:
-    from sklearn.neighbors import KNeighborsClassifier
+def evaluate_dtw(num_classes=26, **kwarg):
     cls = KNeighborsClassifier(1, metric=dtw_dist)
-    evaluate.run(preprocessor, cls, np.arange(8))
+    evaluate.run(preprocessor, cls, np.arange(num_classes), **kwarg)
 
 def evaluate_by_num_classes():
     from sklearn.neighbors import KNeighborsClassifier
