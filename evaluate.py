@@ -20,7 +20,7 @@ def load_dataset():
     # Assumes all letters have same sample rate.
     return letters, fs
 
-def run(preprocessor, classifier, subset=None, seed=None):
+def run(preprocessor, classifier, subset=None, seed=None, plot=True):
     letters, fs = load_dataset()
     labels = alphabet
     if subset is not None:
@@ -32,6 +32,8 @@ def run(preprocessor, classifier, subset=None, seed=None):
     y = np.indices(letters.shape)[1].reshape(-1)
     subjects = np.indices(letters.shape)[0].reshape(-1)
 
+    results = np.empty((3, len(letters)))
+
     # Single-subject accuracy (fully personalized mode)
     for subject in range(len(letters)):
         mask = subjects == subject
@@ -41,8 +43,10 @@ def run(preprocessor, classifier, subset=None, seed=None):
         )
         classifier.fit(X_train, y_train)
         y_pred = classifier.predict(X_test)
+        results[0, subject] = (y_pred == y_test).mean()
         print(f"Single-subject accuracy ({subject}): {round((y_pred == y_test).mean() * 100, 2)}%")
-        ConfusionMatrixDisplay.from_predictions(y_test, y_pred, display_labels=labels, include_values=False)
+        if plot:
+            ConfusionMatrixDisplay.from_predictions(y_test, y_pred, display_labels=labels, include_values=False)
 
     # All-subjects accuracy (semi-personalized mode)
     X_train, X_test, y_train, y_test, subjects_train, subjects_test = train_test_split(
@@ -52,10 +56,12 @@ def run(preprocessor, classifier, subset=None, seed=None):
     classifier.fit(X_train, y_train)
     y_pred = classifier.predict(X_test)
     print(f"All-subject accuracy: {round((y_pred == y_test).mean() * 100, 2)}%")
-    ConfusionMatrixDisplay.from_predictions(y_test, y_pred, display_labels=labels, include_values=False)
+    if plot:
+        ConfusionMatrixDisplay.from_predictions(y_test, y_pred, display_labels=labels, include_values=False)
     # Break down accuracy by subject
     for subject in range(len(letters)):
         mask = subjects_test == subject
+        results[1, subject] = (y_pred[mask] == y_test[mask]).mean()
         print(f"- Subject {subject}: {round((y_pred[mask] == y_test[mask]).mean() * 100, 2)}%")
         # ConfusionMatrixDisplay.from_predictions(y_test[mask], y_pred[mask], display_labels=labels, include_values=False)
 
@@ -66,5 +72,9 @@ def run(preprocessor, classifier, subset=None, seed=None):
         y_train, y_test = y[train_index], y[test_index]
         classifier.fit(X_train, y_train)
         y_pred = classifier.predict(X_test)
+        results[2, subject] = (y_pred == y_test).mean()
         print(f"Left-out-subject accuracy ({subject}): {round((y_pred == y_test).mean() * 100, 2)}%")
-        ConfusionMatrixDisplay.from_predictions(y_test, y_pred, display_labels=labels, include_values=False)
+        if plot:
+            ConfusionMatrixDisplay.from_predictions(y_test, y_pred, display_labels=labels, include_values=False)
+
+    return results
