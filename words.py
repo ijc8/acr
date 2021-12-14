@@ -21,7 +21,7 @@ def get_power(x):
 
 def get_spec(x):
     # return np.log10(mlab.specgram(np.diff(x), 512, noverlap=0)[0].T)
-    return np.abs(np.fft.rfft(block_audio(np.diff(x), 1, 1), axis=1))
+    return np.abs(np.fft.rfft(block_audio(np.diff(x), 2048, 512) * np.hanning(2048)[None, :], axis=1)[:, 0:1])
 
 def get_spec_diff(x):
     # return np.log10(mlab.specgram(np.diff(x), 512, noverlap=0)[0].T)
@@ -152,12 +152,27 @@ for file in files:
 fs, word = scipy.io.wavfile.read("words/the.wav")
 word = word[:512*275]
 word = word.astype(float) / np.iinfo(np.int32).max
+
+x = word
+xb = block_audio(np.diff(x), 2048, 512)
+xb.shape
+
+plt.plot(np.sqrt((xb**2).mean(axis=1)))
+plt.imshow(np.abs(np.fft.rfft(xb, axis=1).T), origin='lower', aspect='auto')
+plt.plot(np.fft.rfft(xb, axis=1)[:, 0])
+
+window = np.hanning(2048)[None, :]
+F = np.abs(np.fft.rfft(xb * window, axis=1))
+F.shape
+plt.plot(np.log10(F[:, 0]))
+plt.imshow(np.log10(F.T), origin='lower', aspect='auto')
+
 # word = get_power(word)[:, None]
 word = get_spec(word)
 match_sequence(X, y, word, zscore=False, plot=True, metric='euclidean')
 # T, H, T, T - uh oh.
 y
-plt.plot(stats.zscore(X[3]))
+plt.plot(get_spec(word))
 plt.plot(np.concatenate((X[1], X[0], X[1], X[1])))
 plt.plot(np.concatenate((X[1], X[0], X[2])))
 plt.imshow(np.log10(word.T), origin='lower', aspect='auto')

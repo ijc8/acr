@@ -19,6 +19,14 @@ def get_power(x):
     # return (spec**2).sum(axis=1)
     # return np.log10((spec**2).sum(axis=1).clip(1e-10, 1)) * 10
 
+def get_custom(x):
+    xb = block_audio(np.diff(x), 2048, 512)
+    power = np.log10(np.maximum((xb**2).mean(axis=1), 1e-10)) * 10
+    window = np.hanning(xb.shape[1])
+    spec = np.abs(np.fft.rfft(xb * window[None, :]))
+    indices = (np.arange(spec.shape[1]) * spec).sum(axis=1) / spec.sum(axis=1)
+    return np.vstack((power, indices)).T
+
 def preprocessor(letters, fs):
     global power
     power = np.empty(letters.shape, dtype=object)
@@ -35,7 +43,7 @@ def dtw_dist(a, b):
 if False:
     from sklearn.neighbors import KNeighborsClassifier
     cls = KNeighborsClassifier(1, metric=dtw_dist)
-    evaluate.run(preprocessor, cls, np.arange(2))
+    evaluate.run(preprocessor, cls, np.arange(8))
 
 # With four classes (ABCD):
 # Single-subject accuracy (0): 95.0%
@@ -211,49 +219,49 @@ def match_sequence(X, y, signal, plot=False, zscore=True):
         plt.show()
     return predicted
 
+if False:
+    import random
+    import time
 
-import random
-import time
+    letters, fs = evaluate.load_dataset()
+    letters = letters[:1, :, 2:3]  # [:1, :4, :]
+    X = preprocessor(letters.reshape(-1), fs)
+    y = np.indices(letters.shape)[1].reshape(-1)
+    subjects = np.indices(letters.shape)[0].reshape(-1)
+    indices = np.indices(letters.shape).reshape((letters.ndim, -1)).T
 
-letters, fs = evaluate.load_dataset()
-letters = letters[:1, :, 2:3]  # [:1, :4, :]
-X = preprocessor(letters.reshape(-1), fs)
-y = np.indices(letters.shape)[1].reshape(-1)
-subjects = np.indices(letters.shape)[0].reshape(-1)
-indices = np.indices(letters.shape).reshape((letters.ndim, -1)).T
+    # mask = np.ones(len(X), dtype=bool)
+    # from sklearn.model_selection import train_test_split
+    # X_train, X_test, y_train, y_test, indices_train, indices_test = train_test_split(
+    #     X[mask], y[mask], indices[mask], test_size=0.25, stratify=y[mask],
+    # )
 
-# mask = np.ones(len(X), dtype=bool)
-# from sklearn.model_selection import train_test_split
-# X_train, X_test, y_train, y_test, indices_train, indices_test = train_test_split(
-#     X[mask], y[mask], indices[mask], test_size=0.25, stratify=y[mask],
-# )
+    import scipy
+    fs, quick = scipy.io.wavfile.read("words/the.wav")
+    quick = quick.astype(float) / np.iinfo(np.int32).max
+    quick = get_power(quick)
+    match_sequence(X, y, quick)
+    evaluate.alphabet[20]
+    plt.plot(np.concatenate((power[20], power[0], power[1])))
+    plt.plot(np.concatenate((power[19], power[7], power[4])))
+    plt.plot(quick)
 
-import scipy
-fs, quick = scipy.io.wavfile.read("words/the.wav")
-quick = quick.astype(float) / np.iinfo(np.int32).max
-quick = get_power(quick)
-match_sequence(X, y, quick)
-evaluate.alphabet[20]
-plt.plot(np.concatenate((power[20], power[0], power[1])))
-plt.plot(np.concatenate((power[19], power[7], power[4])))
-plt.plot(quick)
+    plt.plot(np.concatenate((power[52], power[395], power[228])))
+    indices[228]
 
-plt.plot(np.concatenate((power[52], power[395], power[228])))
-indices[228]
+    import matplotlib.pyplot as plt
+    plt.plot(power[228])
+    plt.plot(quick)
 
-import matplotlib.pyplot as plt
-plt.plot(power[228])
-plt.plot(quick)
+    plt.specgram(letters[0, 11, 8], NFFT=2048, noverlap=1024)
 
-plt.specgram(letters[0, 11, 8], NFFT=2048, noverlap=1024)
-
-spec, *_ = plt.specgram(np.diff(letters[0,11,8]), NFFT=512, noverlap=0);
-plt.yticks(np.arange(0, 250, 10))
-plt.imshow(np.log(spec), origin='lower', aspect='auto')
-plt.plot(np.log10(spec.sum(axis=0)))
-# Pretty good way to find non-stroke sounds:
-cutoff = 22
-plt.plot(np.min(spec[150:], axis=0) / np.max(spec[:cutoff], axis=0))
+    spec, *_ = plt.specgram(np.diff(letters[0,11,8]), NFFT=512, noverlap=0);
+    plt.yticks(np.arange(0, 250, 10))
+    plt.imshow(np.log(spec), origin='lower', aspect='auto')
+    plt.plot(np.log10(spec.sum(axis=0)))
+    # Pretty good way to find non-stroke sounds:
+    cutoff = 22
+    plt.plot(np.min(spec[150:], axis=0) / np.max(spec[:cutoff], axis=0))
 
 def evaluate_sequence(length, **kwargs):
     "Generate a random 'word' from testing letters and try to decode it using training letters."
