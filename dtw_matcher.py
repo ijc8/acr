@@ -201,6 +201,8 @@ def backtrack(costs, pointers, template_starts, template_ends, plot=False):
     transitions.append(pos)
     return transitions
 
+import matplotlib.pyplot as plt
+
 def match_sequence(X, y, signal, plot=False, zscore=True):
     templates = power[X[:, 0]]
     if zscore:
@@ -216,39 +218,32 @@ def match_sequence(X, y, signal, plot=False, zscore=True):
 
     costs, pointers = compute_cost_matrix(distances, template_starts, template_lengths, template_ends)
     if plot:
-        plt.figure()
+        plt.figure(figsize=(10, 6))
         plt.imshow(distances.T, origin='lower', aspect='auto', interpolation='none')
+        plt.title("Multi-Letter Example: Distance Matrix")
+        plt.xlabel("Query")
+        plt.ylabel("Templates (concatenated)")
+        plt.savefig("plots/dist.png", facecolor='white', dpi=150)
         plt.show()
-        plt.figure()
-        plt.imshow(costs.T, origin='lower', aspect='auto')
-        for s in template_starts:
-            plt.axhline(s, color='orange', alpha=0.3)
+        plt.figure(figsize=(10, 6))
+        plt.imshow(costs.T, origin='lower', aspect='auto', interpolation='none')
+        for s, e, l in zip(template_starts, template_ends, y):
+            plt.axhline(s, color='black', linestyle='--', alpha=0.5)
+            plt.text(len(signal) + 5, (s+e)/2, evaluate.alphabet[l], alpha=0.5, verticalalignment='center', fontsize=12)
+        plt.title("Multi-Letter Example: Cost Matrix (with path)")
+        plt.xlabel("Query")
+        plt.ylabel("Templates (concatenated)")
 
     transitions = backtrack(costs, pointers, template_starts, template_ends, plot)
     template_seq = [template_starts.tolist().index(p[1]) for p in transitions[::-1]]
     print(template_seq)
     predicted = y[template_seq]
     if plot:
+        plt.savefig("plots/cost.png", facecolor='white', dpi=150)
         plt.show()
     return predicted
 
 if False:
-    import random
-    import time
-
-    letters, fs = evaluate.load_dataset()
-    letters = letters[:1, :, 2:3]  # [:1, :4, :]
-    X = preprocessor(letters.reshape(-1), fs)
-    y = np.indices(letters.shape)[1].reshape(-1)
-    subjects = np.indices(letters.shape)[0].reshape(-1)
-    indices = np.indices(letters.shape).reshape((letters.ndim, -1)).T
-
-    # mask = np.ones(len(X), dtype=bool)
-    # from sklearn.model_selection import train_test_split
-    # X_train, X_test, y_train, y_test, indices_train, indices_test = train_test_split(
-    #     X[mask], y[mask], indices[mask], test_size=0.25, stratify=y[mask],
-    # )
-
     import scipy
     fs, quick = scipy.io.wavfile.read("words/the.wav")
     quick = quick.astype(float) / np.iinfo(np.int32).max
@@ -275,6 +270,24 @@ if False:
     # Pretty good way to find non-stroke sounds:
     cutoff = 22
     plt.plot(np.min(spec[150:], axis=0) / np.max(spec[:cutoff], axis=0))
+
+import random
+import time
+from sklearn.model_selection import train_test_split
+
+def setup_evaluate_sequence(num_subjects=1, num_classes=4, num_examples=20):
+    global X_train, X_test, y_train, y_test
+    letters, fs = evaluate.load_dataset()
+    letters = letters[:num_subjects, :num_classes, :num_examples]
+    X = preprocessor(letters.reshape(-1), fs)
+    y = np.indices(letters.shape)[1].reshape(-1)
+    subjects = np.indices(letters.shape)[0].reshape(-1)
+    indices = np.indices(letters.shape).reshape((letters.ndim, -1)).T
+
+    mask = np.ones(len(X), dtype=bool)
+    X_train, X_test, y_train, y_test, indices_train, indices_test = train_test_split(
+        X[mask], y[mask], indices[mask], test_size=0.25, stratify=y[mask],
+    )
 
 def evaluate_sequence(length, **kwargs):
     "Generate a random 'word' from testing letters and try to decode it using training letters."

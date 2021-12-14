@@ -18,3 +18,8 @@ plt.title("Letter accuracy vs. number of classes (averaged across subjects)")
 plt.ylabel("Accuracy")
 plt.xlabel("Number of classes (1 = A, 2 = AB, 3 = ABC...)")
 plt.savefig("plots/by_num_classes.png", facecolor="white", dpi=150)
+
+from dtw_matcher import setup_evaluate_sequence, evaluate_sequence
+
+setup_evaluate_sequence(1, 4, 4)
+evaluate_sequence(4, plot=True)
