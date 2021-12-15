@@ -72,9 +72,9 @@ def compute_cost_matrix(distances, template_starts, template_lengths, template_e
                 pointers[i, j] = best
     return costs, pointers
 
-def backtrack(costs, pointers, template_starts, template_ends, plot=False):
+def backtrack(costs, pointers, template_starts, template_ends, plot=False, return_path=False):
     # Backtrack to find best path through cumulative cost matrix.
-    # (This just returns the sequence of templates, not every single index in the path.)
+    # This just returns the sequence of templates, not every single index in the path - unless return_path=True.
     pos = np.array([costs.shape[0] - 1, template_ends[costs[-1, template_ends].argmin()]])
     steps = np.array([
         [0, 1],
@@ -82,13 +82,20 @@ def backtrack(costs, pointers, template_starts, template_ends, plot=False):
         [1, 1]
     ])
     transitions = []
+    corrected_template_idx = 0
+    if return_path:
+        path = []
     while not (pos[0] == 0 and pos[1] in template_starts):
+        if return_path:
+            path.append((pos[0], corrected_template_idx))
         step = pointers[pos[0], pos[1]]
         if step < len(steps):
             parent = pos - steps[step]
+            corrected_template_idx -= steps[step][1]
         else:
             parent = np.array([pos[0] - 1, template_ends[step - 3]])
             transitions.append(pos)
+            corrected_template_idx -= 1
         if plot:
             delta = parent - pos
             plt.arrow(
@@ -97,9 +104,14 @@ def backtrack(costs, pointers, template_starts, template_ends, plot=False):
             )          
         pos = parent
     transitions.append(pos)
+    if return_path:
+        path.append((pos[0], corrected_template_idx))
+        path = np.array(path[::-1])
+        path[:, 1] -= path[0, 1]
+        return (transitions, path)
     return transitions
 
-def match_sequence(templates, labels, signal, plot=False, zscore=True, metric='euclidean'):
+def match_sequence(templates, labels, signal, plot=False, zscore=True, metric='euclidean', return_internals=False):
     templates = templates[:]
     if zscore:
         for i in range(len(templates)):
@@ -110,11 +122,9 @@ def match_sequence(templates, labels, signal, plot=False, zscore=True, metric='e
     template_starts = np.concatenate(([0], np.cumsum(template_lengths[:-1])))
     template_ends = np.cumsum(template_lengths) - 1
     template_concat = np.concatenate(templates)
-    if signal.ndim < 2:
-        signal = signal[:, None]
-    if template_concat.ndim < 2:
-        template_concat = template_concat[:, None]
-    distances = scipy.spatial.distance.cdist(signal, template_concat, metric=metric)
+    signal2d = signal[:, None] if signal.ndim < 2 else signal
+    template_concat2d = template_concat[:, None] if template_concat.ndim < 2 else template_concat
+    distances = scipy.spatial.distance.cdist(signal2d, template_concat2d, metric=metric)
 
     costs, pointers = compute_cost_matrix(distances, template_starts, template_lengths, template_ends)
     if plot:
@@ -126,11 +136,14 @@ def match_sequence(templates, labels, signal, plot=False, zscore=True, metric='e
         for s in template_starts:
             plt.axhline(s, color='orange', alpha=0.3)
 
-    transitions = backtrack(costs, pointers, template_starts, template_ends, plot)
+    if return_internals:
+        transitions, path = backtrack(costs, pointers, template_starts, template_ends, plot, return_path=True)
+    else:
+        transitions = backtrack(costs, pointers, template_starts, template_ends, plot)
     template_seq = [template_starts.tolist().index(p[1]) for p in transitions[::-1]]
     predicted = [labels[i] for i in template_seq]
-    if plot:
-        plt.show()
+    if return_internals:
+        return predicted, signal, [templates[i] for i in template_seq], path
     return predicted
 
 if False:

@@ -90,7 +90,16 @@ class LetterMatcher:
         if self.target == "multi":
             templates = list(self.templates.values())
             labels = list(self.templates.keys())
-            print(match_sequence(templates, labels, recorded))  # plot=True
+            predicted, signal, templates, path = match_sequence(templates, labels, recorded, return_internals=True)
+            template_concat = np.concatenate(templates)
+            print(predicted)
+            self.ax3.clear()
+            offset = 4
+            dtwPlotTwoWay(self.ax3, signal, template_concat, path[:, 0], path[:, 1], offset=offset)
+            x = len(templates[0])
+            for template in templates[1:]:
+                self.ax3.plot(np.arange(len(template)) + x, template + offset)
+                x += len(template)
         elif self.target:
             self.templates[self.target] = recorded
             for rect in self.rects.values():
@@ -113,7 +122,8 @@ class LetterMatcher:
             self.rects[best].set_color("red")
             # alignments[best].plot(type="threeway", ax=self.ax3)
             self.ax3.clear()
-            dtwPlotTwoWay(alignments[best], self.ax3, offset=4)
+            align = alignments[best]
+            dtwPlotTwoWay(self.ax3, align.query, align.reference, align.index1, align.index2, offset=4)
         self.target = None
         self.recorded = []
     
@@ -181,10 +191,7 @@ class LetterMatcher:
 
 # NOTE: Adapted from https://github.com/DynamicTimeWarping/dtw-python/blob/master/dtw/dtwPlot.py,
 # to support plotting to pre-existing axes.
-def dtwPlotTwoWay(d, ax, offset=0):
-    xts = d.query
-    yts = d.reference
-
+def dtwPlotTwoWay(ax, xts, yts, index1, index2, offset=0):
     maxlen = max(len(xts), len(yts))
     times = np.arange(maxlen)
     xts = np.pad(xts,(0,maxlen-len(xts)),"constant",constant_values=np.nan)
@@ -193,12 +200,12 @@ def dtwPlotTwoWay(d, ax, offset=0):
     ax.plot(times, xts, color='k')
     ax.plot(times, yts + offset)
 
-    idx = np.linspace(0, len(d.index1) - 1).astype(int)
+    idx = np.linspace(0, len(index1) - 1).astype(int)
 
     col = []
     for i in idx:
-        col.append([(d.index1[i], xts[d.index1[i]]),
-                    (d.index2[i], offset + yts[d.index2[i]])])
+        col.append([(index1[i], xts[index1[i]]),
+                    (index2[i], offset + yts[index2[i]])])
 
     lc = mc.LineCollection(col, linewidths=1, linestyles=":", colors="gray")
     ax.add_collection(lc)
