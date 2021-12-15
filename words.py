@@ -1,8 +1,6 @@
 import numpy as np
-from dtw import dtw
 from scipy import stats
 import scipy.io.wavfile
-from matplotlib import mlab
 import matplotlib.pyplot as plt
 import os
 from numba import jit
@@ -101,25 +99,23 @@ def backtrack(costs, pointers, template_starts, template_ends, plot=False):
     transitions.append(pos)
     return transitions
 
-def match_sequence(X, y, signal, plot=False, zscore=True, metric='euclidean'):
-    templates = X[:]
+def match_sequence(templates, labels, signal, plot=False, zscore=True, metric='euclidean'):
+    templates = templates[:]
     if zscore:
-        # Experimenting with z-normalization here.
         for i in range(len(templates)):
             templates[i] = stats.zscore(templates[i])
         signal = stats.zscore(signal)
-
-    # templates.append(np.array([[-0.7]]))
-    templates.append(np.zeros((1, templates[0].shape[1])))
-    y = y + [' ']
 
     template_lengths = np.array([len(template) for template in templates])
     template_starts = np.concatenate(([0], np.cumsum(template_lengths[:-1])))
     template_ends = np.cumsum(template_lengths) - 1
     template_concat = np.concatenate(templates)
+    if signal.ndim < 2:
+        signal = signal[:, None]
+    if template_concat.ndim < 2:
+        template_concat = template_concat[:, None]
     distances = scipy.spatial.distance.cdist(signal, template_concat, metric=metric)
 
-    print(distances.shape, template_starts, template_lengths, template_ends)
     costs, pointers = compute_cost_matrix(distances, template_starts, template_lengths, template_ends)
     if plot:
         plt.figure()
@@ -132,48 +128,48 @@ def match_sequence(X, y, signal, plot=False, zscore=True, metric='euclidean'):
 
     transitions = backtrack(costs, pointers, template_starts, template_ends, plot)
     template_seq = [template_starts.tolist().index(p[1]) for p in transitions[::-1]]
-    print(template_seq)
-    predicted = [y[i] for i in template_seq]
+    predicted = [labels[i] for i in template_seq]
     if plot:
         plt.show()
     return predicted
 
-files = os.listdir("good")
-X = []
-y = []
+if False:
+    files = os.listdir("good")
+    X = []
+    y = []
 
-for file in files:
-    fs, x = scipy.io.wavfile.read(os.path.join("good", file))
-    x = x.astype(float) / np.iinfo(np.int32).max
-    # X.append(get_power(x)[:, None])
-    X.append(get_spec(x))
-    y.append(os.path.splitext(file)[0])
+    for file in files:
+        fs, x = scipy.io.wavfile.read(os.path.join("good", file))
+        x = x.astype(float) / np.iinfo(np.int32).max
+        # X.append(get_power(x)[:, None])
+        X.append(get_spec(x))
+        y.append(os.path.splitext(file)[0])
 
-fs, word = scipy.io.wavfile.read("words/the.wav")
-word = word[:512*275]
-word = word.astype(float) / np.iinfo(np.int32).max
+    fs, word = scipy.io.wavfile.read("words/the.wav")
+    word = word[:512*275]
+    word = word.astype(float) / np.iinfo(np.int32).max
 
-x = word
-xb = block_audio(np.diff(x), 2048, 512)
-xb.shape
+    x = word
+    xb = block_audio(np.diff(x), 2048, 512)
+    xb.shape
 
-plt.plot(np.sqrt((xb**2).mean(axis=1)))
-plt.imshow(np.abs(np.fft.rfft(xb, axis=1).T), origin='lower', aspect='auto')
-plt.plot(np.fft.rfft(xb, axis=1)[:, 0])
+    plt.plot(np.sqrt((xb**2).mean(axis=1)))
+    plt.imshow(np.abs(np.fft.rfft(xb, axis=1).T), origin='lower', aspect='auto')
+    plt.plot(np.fft.rfft(xb, axis=1)[:, 0])
 
-window = np.hanning(2048)[None, :]
-F = np.abs(np.fft.rfft(xb * window, axis=1))
-F.shape
-plt.plot(np.log10(F[:, 0]))
-plt.imshow(np.log10(F.T), origin='lower', aspect='auto')
+    window = np.hanning(2048)[None, :]
+    F = np.abs(np.fft.rfft(xb * window, axis=1))
+    F.shape
+    plt.plot(np.log10(F[:, 0]))
+    plt.imshow(np.log10(F.T), origin='lower', aspect='auto')
 
-# word = get_power(word)[:, None]
-word = get_spec(word)
-match_sequence(X, y, word, zscore=False, plot=True, metric='euclidean')
-# T, H, T, T - uh oh.
-y
-plt.plot(get_spec(word))
-plt.plot(np.concatenate((X[1], X[0], X[1], X[1])))
-plt.plot(np.concatenate((X[1], X[0], X[2])))
-plt.imshow(np.log10(word.T), origin='lower', aspect='auto')
-plt.imshow(X[1].T, origin='lower', aspect='auto')
+    # word = get_power(word)[:, None]
+    word = get_spec(word)
+    match_sequence(X, y, word, zscore=False, plot=True, metric='euclidean')
+    # T, H, T, T - uh oh.
+    y
+    plt.plot(get_spec(word))
+    plt.plot(np.concatenate((X[1], X[0], X[1], X[1])))
+    plt.plot(np.concatenate((X[1], X[0], X[2])))
+    plt.imshow(np.log10(word.T), origin='lower', aspect='auto')
+    plt.imshow(X[1].T, origin='lower', aspect='auto')

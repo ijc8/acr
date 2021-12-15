@@ -44,7 +44,8 @@ def safe_dtw(query, reference):
         return dtw(query, reference).normalizedDistance
     except ValueError:
         return 1
-    
+
+from words import match_sequence
 
 class LetterMatcher:
     def __init__(self):
@@ -83,9 +84,14 @@ class LetterMatcher:
                 print("User interrupt.")
 
     def stop_recording(self):
+        self.recording = False
         # Lop off the keyboard sounds.
         recorded = np.array(self.recorded)[5:-5]
-        if self.target:
+        if self.target == "multi":
+            templates = list(self.templates.values())
+            labels = list(self.templates.keys())
+            print(match_sequence(templates, labels, recorded))  # plot=True
+        elif self.target:
             self.templates[self.target] = recorded
             for rect in self.rects.values():
                 rect.remove()
@@ -101,7 +107,7 @@ class LetterMatcher:
             for letter, alignment in alignments.items():
                 self.rects[letter].set_height(1 - alignment.normalizedDistance)
             best = min(alignments.keys(), key=lambda i: alignments[i].normalizedDistance)
-            print(best)
+            print("Matched:", best)
             for rect in self.rects.values():
                 rect.set_color("blue")
             self.rects[best].set_color("red")
@@ -110,7 +116,6 @@ class LetterMatcher:
             dtwPlotTwoWay(alignments[best], self.ax3, offset=4)
         self.target = None
         self.recorded = []
-        self.recording = False
     
     def update_plot(self, recorded):
         alignments = {
@@ -158,6 +163,12 @@ class LetterMatcher:
             else:
                 self.recording = True
             print("Recording", "on" if self.recording else "off")
+        elif event.key == '.':
+            if self.recording:
+                self.stop_recording()
+            else:
+                self.recording = True
+                self.target = "multi"
         elif event.key == '=':
             with open('realtime.pkl', 'wb') as f:
                 pickle.dump(self.templates, f)
