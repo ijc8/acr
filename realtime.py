@@ -2,6 +2,7 @@ import pickle
 import sys
 
 import matplotlib.pyplot as plt
+from matplotlib import collections as mc
 import numpy as np
 import sounddevice as sd
 
@@ -30,6 +31,7 @@ else:
 
 buffer = np.zeros(1024)
 history = np.zeros(512)
+spectrogram = np.zeros((512, len(buffer)//2+1))
 active = np.zeros(512, dtype=int)
 indices = np.arange(len(history))
 i = 0
@@ -38,7 +40,6 @@ from dtw import dtw
 from scipy import stats
 
 def safe_dtw(query, reference):
-    print(len(query), len(reference))
     try:
         return dtw(query, reference).normalizedDistance
     except ValueError:
@@ -47,13 +48,14 @@ def safe_dtw(query, reference):
 
 class LetterMatcher:
     def __init__(self):
-        self.templates = {}
+        with open("realtime.pkl", "rb") as f:
+            self.templates = pickle.load(f)
         self.recording = False
         self.recorded = []
         self.target = None
 
     def run(self):
-        fig, (ax, self.ax2) = plt.subplots(2, 1)
+        fig, ((ax, self.ax4), (self.ax2, self.ax3)) = plt.subplots(2, 2)
         fig.canvas.mpl_connect('key_press_event', self.on_press)
         fig.canvas.mpl_disconnect(fig.canvas.manager.key_press_handler_id)
         ax.set_ylim(-80, 6)
@@ -61,10 +63,15 @@ class LetterMatcher:
         self.plot = ax.plot(indices, history)[0]
         # rects = ax2.bar(np.arange(26), np.random.random(26))
         # rects = dict(zip(alphabet, rects))
-        self.rects = {}
         self.ax2.set_xticks(np.arange(26))
         self.ax2.set_xticklabels(alphabet)
         self.ax2.set_ylim(0, 1)
+        self.rects = dict(zip(
+            self.templates.keys(),
+            self.ax2.bar(np.arange(len(self.templates)), np.zeros(len(self.templates)), color='blue')
+        ))
+
+        self.im = self.ax4.imshow(spectrogram.T, origin='lower', aspect='auto', interpolation='none', vmin=-60, vmax=0)
         fig.show()
 
         with sd.InputStream(channels=1, device=device, callback=self.process_audio, blocksize=512) as stream:
@@ -76,7 +83,8 @@ class LetterMatcher:
                 print("User interrupt.")
 
     def stop_recording(self):
-        recorded = np.array(self.recorded)
+        # Lop off the keyboard sounds.
+        recorded = np.array(self.recorded)[5:-5]
         if self.target:
             self.templates[self.target] = recorded
             for rect in self.rects.values():
@@ -90,7 +98,6 @@ class LetterMatcher:
                 letter: dtw(stats.zscore(recorded), stats.zscore(template), dist_method="euclidean", keep_internals=True)
                 for letter, template in self.templates.items()
             }
-            # max_dist = max(alignment.normalizedDistance for alignment in alignments.values())
             for letter, alignment in alignments.items():
                 self.rects[letter].set_height(1 - alignment.normalizedDistance)
             best = min(alignments.keys(), key=lambda i: alignments[i].normalizedDistance)
@@ -98,7 +105,9 @@ class LetterMatcher:
             for rect in self.rects.values():
                 rect.set_color("blue")
             self.rects[best].set_color("red")
-            # alignments[best].plot(type="threeway")
+            # alignments[best].plot(type="threeway", ax=self.ax3)
+            self.ax3.clear()
+            dtwPlotTwoWay(alignments[best], self.ax3, offset=4)
         self.target = None
         self.recorded = []
         self.recording = False
@@ -108,15 +117,12 @@ class LetterMatcher:
             letter: safe_dtw(stats.zscore(recorded), stats.zscore(template))
             for letter, template in self.templates.items()
         }
-        # max_dist = max(alignment.normalizedDistance for alignment in alignments.values())
         for letter, alignment in alignments.items():
             self.rects[letter].set_height(1 - alignment)
         best = min(alignments.keys(), key=lambda i: alignments[i])
-        print(best)
         for rect in self.rects.values():
             rect.set_color("blue")
         self.rects[best].set_color("red")
-        # alignments[best].plot(type="threeway")
 
     def process_audio(self, indata, frames, time, status):
         global i, buffer
@@ -124,6 +130,7 @@ class LetterMatcher:
         buffer[-len(indata):] = indata[:, 0]
         # history[i] = 10 * np.log10((np.diff(buffer)**2).mean())
         history[i] = 10 * np.log10((buffer**2).mean())
+        spectrogram[i] = 20 * np.log10(np.abs(np.fft.rfft(buffer)))
         # active[i] = history[i] > -70
         # active[i] = recording
         if self.recording:
@@ -134,6 +141,7 @@ class LetterMatcher:
         # plot.set_facecolor(colors[active])
         # plot.set_offsets(np.c_[indices, history])
         self.plot.set_data(indices, history)
+        self.im.set_data(spectrogram.T)
 
     def on_press(self, event):
         if event.key.upper() in alphabet:
@@ -158,6 +166,33 @@ class LetterMatcher:
 # letters, fs = evaluate.load_dataset()
 # letters = letters[0, :, 0]
 # templates = {letter: dtw_matcher.get_power(data) for data, letter in zip(alphabet, letters)}
+
+
+# NOTE: Adapted from https://github.com/DynamicTimeWarping/dtw-python/blob/master/dtw/dtwPlot.py,
+# to support plotting to pre-existing axes.
+def dtwPlotTwoWay(d, ax, offset=0):
+    xts = d.query
+    yts = d.reference
+
+    maxlen = max(len(xts), len(yts))
+    times = np.arange(maxlen)
+    xts = np.pad(xts,(0,maxlen-len(xts)),"constant",constant_values=np.nan)
+    yts = np.pad(yts,(0,maxlen-len(yts)),"constant",constant_values=np.nan)
+
+    ax.plot(times, xts, color='k')
+    ax.plot(times, yts + offset)
+
+    idx = np.linspace(0, len(d.index1) - 1).astype(int)
+
+    col = []
+    for i in idx:
+        col.append([(d.index1[i], xts[d.index1[i]]),
+                    (d.index2[i], offset + yts[d.index2[i]])])
+
+    lc = mc.LineCollection(col, linewidths=1, linestyles=":", colors="gray")
+    ax.add_collection(lc)
+    return ax
+
 
 lm = LetterMatcher()
 lm.run()
